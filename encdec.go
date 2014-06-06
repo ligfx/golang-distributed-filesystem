@@ -6,38 +6,49 @@ import (
 	"strings"
 )
 
-type Decoder struct {
+type basicDecoder struct {
 	reader *bufio.Reader
 }
 
-type Encoder struct {
+type basicEncoder struct {
 	writer io.Writer
 }
 
-type EncodeDecoder struct {
-	*Decoder
-	*Encoder
+type basicEncodeDecoder struct {
+	basicDecoder
+	basicEncoder
 }
 
-func NewEncodeDecoder(rw io.ReadWriter) *EncodeDecoder {
-	return &EncodeDecoder{&Decoder{bufio.NewReader(rw)}, &Encoder{rw}}
-}
 
-func (d Decoder) Decode() (string, []string, error) {
+func (d basicDecoder) Decode() ([]string, error) {
 	line, err := d.reader.ReadString('\n')
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 
-	_splits := strings.Split(strings.TrimSpace(line), " ")
-	message_type := _splits[0]
-	message := _splits[1:]
+	msg := strings.Split(strings.TrimSpace(line), " ")
 
-	return message_type, message, nil
+	return msg, nil
 }
 
-func (e Encoder) Encode(args ...string) {
+func (e basicEncoder) Encode(args ...string) {
 	// should check for errors...
-	e.writer.Write([]byte(strings.Join(args, " ")))
-	e.writer.Write([]byte("\n"))
+	e.writer.Write([]byte(strings.Join(args, " ") + "\n"))
+}
+
+type Encoder interface {
+	Encode(...string)
+}
+
+type Decoder interface {
+	Decode()([]string, error)
+}
+
+type EncodeDecoder interface {
+	Decoder
+	Encoder
+}
+
+func NewEncodeDecoder(r io.Reader, w io.Writer) EncodeDecoder {
+	return &basicEncodeDecoder{basicDecoder{bufio.NewReader(r)}, basicEncoder{w}}
 }
