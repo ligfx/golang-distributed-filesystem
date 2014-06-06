@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"./vendor/nu7hatch/gouuid"
 )
 
 type Session struct {
@@ -46,8 +48,8 @@ func (s Session) Decode() (string, []string, error) {
 	return message_type, message, nil
 }
 
-func handleCreate(session Session) {
-	message_type, message, err := session.Decode()
+func handleCreate(session *Session) {
+	message_type, _, err := session.Decode()
 	if err != nil {
 		session.Print(err)
 		return
@@ -55,8 +57,12 @@ func handleCreate(session Session) {
 
 	switch message_type {
 	case "APPEND":
-		session.Encode("OK")
-		handleCreate(session)
+		u4, err := uuid.NewV4()
+		if err != nil {
+			session.Print(err)
+			return
+		}
+		session.Encode(u4.String())
 		return
 	default:
 		session.Printf("Unknown message_type: %#v", message_type)
@@ -67,7 +73,7 @@ func handleCreate(session Session) {
 func handleConnection(conn net.Conn) {
 	session := NewSession(conn)
 
-	message_type, message, err := session.Decode()
+	message_type, _, err := session.Decode()
 	if err != nil {
 		session.Print(err)
 		return
