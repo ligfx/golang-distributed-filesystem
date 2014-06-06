@@ -7,6 +7,7 @@
 
 package main
 
+
 func main() {
 	CommandRun([]Command{
 		{Name: "metadatanode", Description: "metadatanode", Function: MetadataNode},

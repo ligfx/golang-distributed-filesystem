@@ -1,0 +1,10 @@
+{
+	"ImportPath": "github.com/michaelmaltese/golang-distributed-filesystem",
+	"GoVersion": "go1.2.2",
+	"Deps": [
+		{
+			"ImportPath": "github.com/nu7hatch/gouuid",
+			"Rev": "179d4d0c4d8d407a32af483c2354df1d2c91e6c3"
+		}
+	]
+}

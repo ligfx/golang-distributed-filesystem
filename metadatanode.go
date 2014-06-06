@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/michaelmaltese/golang-distributed-filesystem/vendor/nu7hatch/gouuid"
+	"github.com/nu7hatch/gouuid"
 )
 
 type Session struct {
