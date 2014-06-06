@@ -114,7 +114,7 @@ func (d *DataNodeTracker) GetDataNodes() []string {
 	return l
 }
 
-func main() {
+func MetadataNode() bool {
 	var (
 		port = flag.String("port", "5050", "port to listen on")
 	)
@@ -136,4 +136,6 @@ func main() {
 		session := NewSession(conn, dt)
 		go handleConnection(session)
 	}
+
+	return true
 }

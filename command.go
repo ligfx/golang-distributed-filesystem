@@ -9,32 +9,32 @@ import (
 type Command struct {
 	Name string
 	Description string
-	Function func([]string)bool
+	Function func()bool
 }
 
-func usage(commands []Command) {
-	fmt.Println("USAGE:", path.Base(os.Args[0]), "CMD", "[OPTS...]", "[ARGS...]")
-	fmt.Println("COMMANDS:")
+func usage(whoami string, commands []Command) {
+	fmt.Println("Usage:", whoami, "CMD", "[OPTS...]", "[ARGS...]")
+	fmt.Println("Commands:")
 	for _, c := range commands {
 		fmt.Println("\t", c.Description)
 	}
-	os.Exit(1)
+	os.Exit(2)
 }
 
 func CommandRun(commands []Command) {
-	if len(os.Args) < 2 {
-		usage(commands)
-	}
-
-	for _, c := range commands {
-		if c.Name == os.Args[1] {
-			ok := c.Function(os.Args[2:])
-			if !ok {
-				usage(commands)
+	whoami := path.Base(os.Args[0])
+	if len(os.Args) > 1 {
+		for _, c := range commands {
+			if c.Name == os.Args[1] {
+				os.Args = os.Args[1:]
+				ok := c.Function()
+				if !ok {
+					break
+				}
+				return
 			}
-			return
 		}
 	}
 
-	usage(commands)
+	usage(whoami, commands)
 }

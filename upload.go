@@ -7,11 +7,11 @@ import (
 	"strings"
 )
 
-func Upload(args []string) bool {
-	if len(args) != 1 {
+func Upload() bool {
+	if len(os.Args) != 1 {
 		return false
 	}
-	// local := args[0]
+	// local := os.Args[0]
 
 	conn, err := net.Dial("tcp", "localhost:5050")
 	if err != nil {
