@@ -19,7 +19,6 @@ type basicEncodeDecoder struct {
 	basicEncoder
 }
 
-
 func (d basicDecoder) Decode() ([]string, error) {
 	line, err := d.reader.ReadString('\n')
 	if err != nil {
@@ -41,7 +40,7 @@ type Encoder interface {
 }
 
 type Decoder interface {
-	Decode()([]string, error)
+	Decode() ([]string, error)
 }
 
 type EncodeDecoder interface {

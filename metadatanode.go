@@ -12,7 +12,6 @@ import (
 	"os"
 	"sync"
 
-//    "github.com/looplab/fsm"
 	"github.com/nu7hatch/gouuid"
 )
 
@@ -89,7 +88,7 @@ func handleConnection(session *Session, tracker *DataNodeTracker) {
 
 type DataNodeTracker struct {
 	dataNodes []string
-	mutex sync.Mutex
+	mutex     sync.Mutex
 }
 
 func NewDataNodeTracker() *DataNodeTracker {
@@ -113,7 +112,7 @@ func MetadataNode() bool {
 	)
 	flag.Parse()
 
-	socket, err := net.Listen("tcp", ":" + *port)
+	socket, err := net.Listen("tcp", ":"+*port)
 	if err != nil {
 		log.Fatal(err)
 	}

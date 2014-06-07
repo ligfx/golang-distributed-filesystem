@@ -7,9 +7,9 @@ import (
 )
 
 type Command struct {
-	Name string
+	Name        string
 	Description string
-	Function func()bool
+	Function    func() bool
 }
 
 func usage(whoami string, commands []Command) {

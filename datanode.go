@@ -57,7 +57,7 @@ func dnHandleRequest(c net.Conn) {
 		return
 	}
 	defer file.Close()
-	
+
 	io.CopyN(file, c, size)
 
 	ed.Encode("OK")

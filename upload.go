@@ -70,7 +70,7 @@ func Upload() bool {
 
 		dataNodeStream := NewEncodeDecoder(io.TeeReader(dataNode, os.Stdout), dataNode)
 
-		dataNodeStream.Encode("BLOCK", blockId)		
+		dataNodeStream.Encode("BLOCK", blockId)
 
 		msg, err = dataNodeStream.Decode()
 		if err != nil {
@@ -120,7 +120,7 @@ func Upload() bool {
 			os.Exit(1)
 		}
 		defer file.Close()
-		
+
 		io.CopyN(dataNode, file, size)
 
 		msg, err = dataNodeStream.Decode()
