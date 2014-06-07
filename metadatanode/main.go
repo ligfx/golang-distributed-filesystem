@@ -157,7 +157,7 @@ func MetadataNode() {
 			server := rpc.NewServer()
 			server.Register(&ClientSession{Start, state, "", nil})
 			codec := jsonrpc.NewServerCodec(client)
-			if debug {
+			if *debug {
 				codec = util.LoggingServerCodec(client.RemoteAddr().String(),
 					codec)
 			}
