@@ -65,15 +65,16 @@ func (self *ClientSession) Confirm(_ *int, _ *int) error {
 	return nil	
 }
 
-func handleRequest(c net.Conn) {
-	defer c.Close()
-
+func handleRequest(c net.Conn, debug bool) {
 	server := rpc.NewServer()
 	session := &ClientSession{Start, "", -1}
 	server.Register(session)
-	codec := util.LoggingServerCodec(
-		c.RemoteAddr().String(),
-		jsonrpc.NewServerCodec(c))
+	codec := jsonrpc.NewServerCodec(c)
+	if debug {
+		codec = util.LoggingServerCodec(
+			c.RemoteAddr().String(),
+			codec)
+	}
 	for {
 		switch session.state {
 		default:
@@ -93,6 +94,8 @@ func handleRequest(c net.Conn) {
 				log.Fatal("Copying error: ", err)
 			}
 
+			log.Println("Received block '" + session.blockId + "' from " + c.RemoteAddr().String())
+
 			session.state = ReadyToConfirm
 		}
 	}
@@ -102,6 +105,7 @@ func handleRequest(c net.Conn) {
 func DataNode() {
 	var (
 		port = flag.String("port", "5052", "port to listen on")
+		debug = flag.Bool("debug", false, "Show RPC conversations")
 	)
 	flag.Parse()
 
@@ -110,7 +114,6 @@ func DataNode() {
 
 	for {
 		conn := <- socket
-		log.Println("Connection from:", conn.RemoteAddr().String())
-		go handleRequest(conn)
+		go handleRequest(conn, *debug)
 	}
 }

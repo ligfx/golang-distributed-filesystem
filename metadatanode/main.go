@@ -26,6 +26,7 @@ type ClientSession struct {
 	server *MetaDataNodeState
 	blob_id string
 	blocks []string
+	remoteAddr string
 }
 func (self *ClientSession) CreateBlob(_ *int, ret *string) error {
 	if self.state != Start {
@@ -63,6 +64,7 @@ func (self *ClientSession) Commit(_ *int, _ *int) error {
 	}
 
 	self.server.CommitBlob(self.blob_id, self.blocks)
+	log.Print("Committed blob '" + self.blob_id + "' for " + self.remoteAddr)
 	self.blob_id = ""
 	self.blocks = nil
 	self.state = Start
@@ -155,7 +157,7 @@ func MetadataNode() {
 		select {
 		case client := <- clientSocket:
 			server := rpc.NewServer()
-			server.Register(&ClientSession{Start, state, "", nil})
+			server.Register(&ClientSession{Start, state, "", nil, client.RemoteAddr().String()})
 			codec := jsonrpc.NewServerCodec(client)
 			if *debug {
 				codec = util.LoggingServerCodec(client.RemoteAddr().String(),
