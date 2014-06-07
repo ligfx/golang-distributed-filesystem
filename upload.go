@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"path"
 	"strconv"
 )
 
@@ -109,12 +108,7 @@ func Upload() bool {
 		}
 
 		// TODO: absolute paths
-		cwd, err := os.Getwd()
-		if err != nil {
-			fmt.Print(err)
-			os.Exit(1)
-		}
-		file, err := os.Open(path.Join(cwd, localFileName))
+		file, err := os.Open(localFileName)
 		if err != nil {
 			fmt.Print(err)
 			os.Exit(1)
@@ -132,6 +126,8 @@ func Upload() bool {
 			fmt.Printf("Received %#v", msg)
 			os.Exit(1)
 		}
+
+		ed.Encode("OK")
 	}
 
 	return true

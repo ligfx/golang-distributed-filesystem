@@ -6,6 +6,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -39,31 +40,7 @@ func NewSession(conn net.Conn) *Session {
 		logger}
 }
 
-func handleCreate(session *Session, tracker *DataNodeTracker) {
-	for {
-		message, err := session.Decode()
-		if err != nil {
-			session.Print(err)
-			return
-		}
-
-		switch message[0] {
-		case "APPEND":
-			u4, err := uuid.NewV4()
-			if err != nil {
-				session.Print(err)
-				return
-			}
-			// Get list of datanodes
-			session.Encode(append([]string{"OK", "BLOCK", u4.String()}, tracker.GetDataNodes()...)...)
-		default:
-			session.Printf("Unknown message_type: %#v", message[0])
-			return
-		}
-	}
-}
-
-func handleConnection(session *Session, tracker *DataNodeTracker) {
+func handleConnection(session *Session, state *MetaDataNodeState) {
 	defer session.Close()
 
 	message, err := session.Decode()
@@ -74,36 +51,97 @@ func handleConnection(session *Session, tracker *DataNodeTracker) {
 
 	switch message[0] {
 	case "CREATE":
-		u4, err := uuid.NewV4()
+		blob_id, err := uuid.NewV4()
 		if err != nil {
 			session.Print(err)
 			return
 		}
-		session.Encode("OK", "BLOB", u4.String())
-		handleCreate(session, tracker)
+		session.Encode("OK", "BLOB", blob_id.String())
+		
+		blocks := make([]string, 1)
+
+		for {
+			message, err := session.Decode()
+			if err != nil {
+				session.Print(err)
+				return
+			}
+
+			switch message[0] {
+			case "APPEND":
+				block_id, err := uuid.NewV4()
+				if err != nil {
+					session.Print(err)
+					return
+				}
+				blocks = append(blocks, block_id.String())
+				// Get list of datanodes
+				session.Encode(append([]string{"OK", "BLOCK", block_id.String()}, state.GetDataNodes()...)...)
+			case "OK":
+				state.CommitBlob(blob_id.String(), blocks)
+			default:
+				session.Printf("Unknown message_type: %#v", message[0])
+				return
+			}
+		}
+
+	case "GETBLOB":
+		blob_id := message[1]
+		fmt.Fprintf(session, "%v\n", state.GetBlob(blob_id))
+
+	case "GETBLOCK":
+		block_id := message[1]
+		fmt.Fprintf(session, "%v\n", state.GetBlock(block_id))
+
 	default:
 		session.Printf("Unknown message_type: %#v", message[0])
 	}
 }
 
-type DataNodeTracker struct {
+type MetaDataNodeState struct {
+	mutex sync.Mutex
 	dataNodes []string
-	mutex     sync.Mutex
+	blobs map[string][]string
+	blocks map[string][]string
 }
 
-func NewDataNodeTracker() *DataNodeTracker {
-	var self DataNodeTracker
+func NewMetaDataNodeState() *MetaDataNodeState {
+	var self MetaDataNodeState
 	self.dataNodes = make([]string, 0)
 	self.dataNodes = append(self.dataNodes, "127.0.0.1:5051")
+
+	self.blobs = make(map[string][]string)
 	return &self
 }
 
-func (d *DataNodeTracker) GetDataNodes() []string {
-	d.mutex.Lock()
-	l := make([]string, len(d.dataNodes))
-	copy(l, d.dataNodes)
-	d.mutex.Unlock()
+func (self *MetaDataNodeState) GetBlob(blob_id string) []string {
+	self.mutex.Lock()
+	defer self.mutex.Unlock()
+
+	return self.blobs[blob_id]
+}
+
+func (self *MetaDataNodeState) GetBlock(block_id string) []string {
+	self.mutex.Lock()
+	defer self.mutex.Unlock()
+
+	return self.blocks[block_id]
+}
+
+
+func (self *MetaDataNodeState) GetDataNodes() []string {
+	// Is this lock necessary?
+	self.mutex.Lock()
+	defer self.mutex.Unlock()
+	l := make([]string, len(self.dataNodes))
+	copy(l, self.dataNodes)
 	return l
+}
+
+func (self *MetaDataNodeState) CommitBlob(name string, blocks []string) {
+	self.mutex.Lock()
+	defer self.mutex.Unlock()
+	self.blobs[name] = blocks
 }
 
 func MetadataNode() bool {
@@ -116,7 +154,7 @@ func MetadataNode() bool {
 	if err != nil {
 		log.Fatal(err)
 	}
-	dt := NewDataNodeTracker()
+	state := NewMetaDataNodeState()
 	log.Print("Accepting connections on :" + *port)
 	for {
 		conn, err := socket.Accept()
@@ -126,7 +164,7 @@ func MetadataNode() bool {
 			continue
 		}
 		session := NewSession(conn)
-		go handleConnection(session, dt)
+		go handleConnection(session, state)
 	}
 
 	return true
