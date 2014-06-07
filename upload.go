@@ -6,6 +6,8 @@ import (
 	"net"
 	"os"
 	"strconv"
+
+	"github.com/michaelmaltese/golang-distributed-filesystem/comm"
 )
 
 func Upload() bool {
@@ -26,7 +28,7 @@ func Upload() bool {
 		os.Exit(1)
 	}
 	defer conn.Close()
-	ed := NewEncodeDecoder(io.TeeReader(conn, os.Stdout), conn)
+	ed := comm.NewEncodeDecoder(io.TeeReader(conn, os.Stdout), conn)
 
 	ed.Encode("CREATE")
 	var msg []string
@@ -67,7 +69,7 @@ func Upload() bool {
 		}
 		defer dataNode.Close()
 
-		dataNodeStream := NewEncodeDecoder(io.TeeReader(dataNode, os.Stdout), dataNode)
+		dataNodeStream := comm.NewEncodeDecoder(io.TeeReader(dataNode, os.Stdout), dataNode)
 
 		dataNodeStream.Encode("BLOCK", blockId)
 

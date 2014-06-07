@@ -2,7 +2,7 @@
 // 1) Learn Go
 // 2) Learn more about distributed systems
 
-package main
+package metadatanode
 
 import (
 	"flag"
@@ -14,33 +14,26 @@ import (
 	"sync"
 
 	"github.com/nu7hatch/gouuid"
+
+	"github.com/michaelmaltese/golang-distributed-filesystem/comm"
 )
 
 type Session struct {
 	net.Conn
-	EncodeDecoder
+	comm.EncodeDecoder
 	*log.Logger
-}
-
-type LoggerWrapper struct {
-	*log.Logger
-}
-
-func (l *LoggerWrapper) Write(p []byte) (n int, err error) {
-	l.Print(string(p))
-	return len(p), nil
 }
 
 func NewSession(conn net.Conn) *Session {
 	logger := log.New(os.Stderr, conn.RemoteAddr().String()+" ", log.LstdFlags)
 
-	ed := NewEncodeDecoder(io.TeeReader(conn, &LoggerWrapper{logger}), conn)
+	ed := comm.NewEncodeDecoder(io.TeeReader(conn, &comm.LoggerWrapper{logger}), conn)
 	return &Session{conn,
 		ed,
 		logger}
 }
 
-func handleConnection(session *Session, state *MetaDataNodeState) {
+func handleClientConnection(session *Session, state *MetaDataNodeState) {
 	defer session.Close()
 
 	message, err := session.Decode()
@@ -58,7 +51,7 @@ func handleConnection(session *Session, state *MetaDataNodeState) {
 		}
 		session.Encode("OK", "BLOB", blob_id.String())
 		
-		blocks := make([]string, 1)
+		blocks := make([]string, 0)
 
 		for {
 			message, err := session.Decode()
@@ -108,8 +101,6 @@ type MetaDataNodeState struct {
 func NewMetaDataNodeState() *MetaDataNodeState {
 	var self MetaDataNodeState
 	self.dataNodes = make([]string, 0)
-	self.dataNodes = append(self.dataNodes, "127.0.0.1:5051")
-
 	self.blobs = make(map[string][]string)
 	return &self
 }
@@ -144,27 +135,52 @@ func (self *MetaDataNodeState) CommitBlob(name string, blocks []string) {
 	self.blobs[name] = blocks
 }
 
+func handlePeerConnection(c net.Conn) {
+
+}
+
 func MetadataNode() bool {
 	var (
-		port = flag.String("port", "5050", "port to listen on")
+		clientPort = flag.String("clientport", "5050", "port to listen on")
+		peerPort = flag.String("peerport", "5051", "port to listen on")
 	)
 	flag.Parse()
 
-	socket, err := net.Listen("tcp", ":"+*port)
+	clientSocket, err := net.Listen("tcp", ":"+*clientPort)
 	if err != nil {
 		log.Fatal(err)
 	}
+	peerSocket, err := net.Listen("tcp", ":"+*peerPort)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Print("Accepting client connections on :" + *clientPort)
+	log.Print("Accepting peer connections on :" + *peerPort)
+
 	state := NewMetaDataNodeState()
-	log.Print("Accepting connections on :" + *port)
+
+	go func(){
+		
+		for {
+			conn, err := clientSocket.Accept()
+			log.Print("Connection from client", conn.RemoteAddr())
+			if err != nil {
+				log.Print(err)
+				continue
+			}
+			session := NewSession(conn)
+			go handleClientConnection(session, state)
+		}
+	}()
+
 	for {
-		conn, err := socket.Accept()
-		log.Print("Connection from ", conn.RemoteAddr())
+		conn, err := peerSocket.Accept()
+		log.Print("Connection from peer", conn.RemoteAddr())
 		if err != nil {
 			log.Print(err)
 			continue
 		}
-		session := NewSession(conn)
-		go handleConnection(session, state)
+		go handlePeerConnection(conn)
 	}
 
 	return true

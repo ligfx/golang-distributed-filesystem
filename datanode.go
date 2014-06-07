@@ -8,11 +8,13 @@ import (
 	"os"
 	"path"
 	"strconv"
+
+	"github.com/michaelmaltese/golang-distributed-filesystem/comm"
 )
 
 func dnHandleRequest(c net.Conn) {
 	logger := log.New(os.Stderr, c.RemoteAddr().String()+" ", log.LstdFlags)
-	ed := NewEncodeDecoder(io.TeeReader(c, &LoggerWrapper{logger}), c)
+	ed := comm.NewEncodeDecoder(io.TeeReader(c, &comm.LoggerWrapper{logger}), c)
 
 	var msg []string
 	var err error
