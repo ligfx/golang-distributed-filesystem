@@ -12,6 +12,7 @@ import (
 	"os"
 	"sync"
 
+//    "github.com/looplab/fsm"
 	"github.com/nu7hatch/gouuid"
 )
 
