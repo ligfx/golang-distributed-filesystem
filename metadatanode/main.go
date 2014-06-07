@@ -87,15 +87,6 @@ func (self *ClientSession) GetBlock(blockId *string, nodes *[]string) error {
 	return nil
 }
 
-func handleClientConnection(conn net.Conn, state *MetaDataNodeState) {
-	server := rpc.NewServer()
-	server.Register(&ClientSession{Start, state, "", nil})
-	codec := util.LoggingServerCodec(
-		conn.RemoteAddr().String(),
-		jsonrpc.NewServerCodec(conn))
-	server.ServeCodec(codec)
-}
-
 type MetaDataNodeState struct {
 	mutex sync.Mutex
 	dataNodes []string
@@ -149,6 +140,7 @@ func MetadataNode() {
 	var (
 		clientPort = flag.String("clientport", "5050", "port to listen on")
 		peerPort = flag.String("peerport", "5051", "port to listen on")
+		debug = flag.Bool("debug", false, "Show RPC conversations")
 	)
 	flag.Parse()
 
@@ -162,7 +154,14 @@ func MetadataNode() {
 	for {
 		select {
 		case client := <- clientSocket:
-			go handleClientConnection(client, state)
+			server := rpc.NewServer()
+			server.Register(&ClientSession{Start, state, "", nil})
+			codec := jsonrpc.NewServerCodec(client)
+			if debug {
+				codec = util.LoggingServerCodec(client.RemoteAddr().String(),
+					codec)
+			}
+			go server.ServeCodec(codec)
 		case peer := <- peerSocket:
 			go handlePeerConnection(peer, state)
 		}
