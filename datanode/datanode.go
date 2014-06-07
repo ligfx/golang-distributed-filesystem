@@ -1,4 +1,5 @@
-package main
+// Stores blocks for the cluster.
+package datanode
 
 import (
 	"flag"

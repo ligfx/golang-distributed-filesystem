@@ -1,4 +1,5 @@
-package main
+// Command-line tool to upload files to cluster.
+package upload
 
 import (
 	"fmt"

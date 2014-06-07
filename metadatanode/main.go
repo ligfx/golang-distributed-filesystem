@@ -1,7 +1,4 @@
-// Building a distributed system in Go, to:
-// 1) Learn Go
-// 2) Learn more about distributed systems
-
+// Lead server which keeps tracks of blobs, blocks, and DataNodes.
 package metadatanode
 
 import (

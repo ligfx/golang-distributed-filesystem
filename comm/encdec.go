@@ -1,3 +1,4 @@
+// Functions dealing with the network protocol and other communications issues.
 package comm 
 
 import (
