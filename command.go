@@ -9,7 +9,7 @@ import (
 type Command struct {
 	Name        string
 	Description string
-	Function    func() bool
+	Function    func()
 }
 
 func usage(whoami string, commands []Command) {
@@ -27,10 +27,7 @@ func CommandRun(commands []Command) {
 		for _, c := range commands {
 			if c.Name == os.Args[1] {
 				os.Args = os.Args[1:]
-				ok := c.Function()
-				if !ok {
-					break
-				}
+				c.Function()
 				return
 			}
 		}

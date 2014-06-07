@@ -2,92 +2,115 @@
 package datanode
 
 import (
+	"errors"
 	"flag"
 	"io"
 	"log"
-	"net"
 	"os"
-	"path"
-	"strconv"
+	"net"
+	"net/rpc"
+	"net/rpc/jsonrpc"
 
 	"github.com/michaelmaltese/golang-distributed-filesystem/comm"
+	"github.com/michaelmaltese/golang-distributed-filesystem/util"
 )
 
-func dnHandleRequest(c net.Conn) {
-	logger := log.New(os.Stderr, c.RemoteAddr().String()+" ", log.LstdFlags)
-	ed := comm.NewEncodeDecoder(io.TeeReader(c, &comm.LoggerWrapper{logger}), c)
-
-	var msg []string
-	var err error
-	msg, err = ed.Decode()
-	if err != nil {
-		logger.Println(err)
-		return
-	}
-	// TODO: Implement pipelining
-	if msg[0] != "BLOCK" || len(msg) != 2 {
-		return
-	}
-	id := msg[1]
-
-	maxsize := int64(128 * 1024 * 1024)
-	ed.Encode("OK", "MAXSIZE", strconv.FormatInt(maxsize, 10))
-
-	msg, err = ed.Decode()
-	if err != nil {
-		logger.Println(err)
-		return
-	}
-	if msg[0] != "SIZE" || len(msg) != 2 {
-		return
-	}
-	size, err := strconv.ParseInt(msg[1], 10, 64)
-	if size > maxsize || size <= 0 {
-		return
-	}
-
-	ed.Encode("OK")
-
-	pwd, err := os.Getwd()
-	if err != nil {
-		logger.Print(err)
-		return
-	}
-
-	file, err := os.Create(path.Join(pwd, id))
-	if err != nil {
-		logger.Print(err)
-		return
-	}
-	defer file.Close()
-
-	io.CopyN(file, c, size)
-
-	ed.Encode("OK")
-	c.Close()
+type ClientSessionState int
+const (
+	Start ClientSessionState = iota
+	SizeNegotiation
+	Streaming
+	ReadyToConfirm
+	Done
+)
+type ClientSession struct {
+	state ClientSessionState
+	blockId string
+	size int64
 }
 
-func DataNode() bool {
+const MaxSize = int64(128 * 1024 * 1024)
+
+func (self *ClientSession) ForwardBlock(blockMsg *comm.ForwardBlock, maxSize *int64) error {
+	if self.state != Start {
+		return errors.New("Not allowed in current session state")
+	}
+
+	self.blockId = blockMsg.BlockId
+	*maxSize = MaxSize
+	self.state = SizeNegotiation
+	return nil
+}
+
+func (self *ClientSession) Size(size *int64, _ *int) error {
+	if self.state != SizeNegotiation {
+		return errors.New("Not allowed in current session state")
+	}
+
+	if *size > MaxSize || *size <= 0 {
+		return errors.New("Bad size")
+	}
+
+	self.state = Streaming
+	self.size = *size
+	return nil
+}
+
+func (self *ClientSession) Confirm(_ *int, _ *int) error {
+	if self.state != ReadyToConfirm {
+		return errors.New("Not allowed in current session state")
+	}
+
+	self.state = Done
+	return nil	
+}
+
+func handleRequest(c net.Conn) {
+	defer c.Close()
+
+	server := rpc.NewServer()
+	session := &ClientSession{Start, "", -1}
+	server.Register(session)
+	codec := util.LoggingServerCodec(
+		c.RemoteAddr().String(),
+		jsonrpc.NewServerCodec(c))
+	for {
+		switch session.state {
+		default:
+			server.ServeRequest(codec)
+
+		case Done:
+			return
+
+		case Streaming:
+			file, err := os.Create(session.blockId)
+			if err != nil {
+				log.Fatal("Create file '" + session.blockId + "' error:", err)
+			}
+			defer file.Close()
+			_, err = io.CopyN(file, c, session.size)
+			if err != nil {
+				log.Fatal("Copying error: ", err)
+			}
+
+			session.state = ReadyToConfirm
+		}
+	}
+
+}
+
+func DataNode() {
 	var (
-		port = flag.String("port", "5051", "port to listen on")
+		port = flag.String("port", "5052", "port to listen on")
 	)
 	flag.Parse()
 
-	socket, err := net.Listen("tcp", ":"+*port)
-	if err != nil {
-		log.Fatal(err)
-	}
+	socket := util.Listen(*port)
 	log.Print("Accepting connections on :" + *port)
-	for {
-		conn, err := socket.Accept()
-		log.Print("Connection from ", conn.RemoteAddr())
-		if err != nil {
-			log.Print(err)
-			continue
-		}
-		// session := NewSession(conn)
-		go dnHandleRequest(conn)
-	}
 
-	return true
+	for {
+		conn := <- socket
+		log.Println("Connection from:", conn.RemoteAddr().String())
+		go handleRequest(conn)
+	}
 }

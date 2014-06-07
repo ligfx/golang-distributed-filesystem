@@ -4,134 +4,171 @@ package upload
 import (
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
-	"strconv"
+	"net/rpc"
+	"net/rpc/jsonrpc"
 
 	"github.com/michaelmaltese/golang-distributed-filesystem/comm"
+	"github.com/michaelmaltese/golang-distributed-filesystem/util"
 )
 
-func Upload() bool {
+func Upload() {
+	var err error
+
 	if len(os.Args) != 2 {
-		return false
+		fmt.Println("Usage: upload FILE")
+		os.Exit(1)
 	}
 	localFileName := os.Args[1]
 	localFileInfo, err := os.Stat(localFileName)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		panic(err)
 	}
 	localFileSize := localFileInfo.Size()
 
 	conn, err := net.Dial("tcp", "localhost:5050")
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatal("Dial error:", err)
 	}
 	defer conn.Close()
-	ed := comm.NewEncodeDecoder(io.TeeReader(conn, os.Stdout), conn)
 
-	ed.Encode("CREATE")
-	var msg []string
-	msg, err = ed.Decode()
+	codec := util.LoggingClientCodec(
+		conn.RemoteAddr().String(),
+		jsonrpc.NewClientCodec(conn))
+	client := rpc.NewClientWithCodec(codec)
+
+	var blobId string
+	err = client.Call("ClientSession.CreateBlob", nil, &blobId)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatal("CreateBlob error:", err)
 	}
-
-	if msg[0] != "OK" || msg[1] != "BLOB" || len(msg) != 3 {
-		fmt.Printf("Received %#v", msg)
-		os.Exit(1)
-	}
-
-	// blobId := msg[2]
+	fmt.Println("Blob ID:", blobId)
 
 	bytesLeft := localFileSize
 	for bytesLeft > 0 {
-
-		ed.Encode("APPEND")
-		msg, err = ed.Decode()
+		var nodesMsg comm.ForwardBlock
+		err = client.Call("ClientSession.Append", nil, &nodesMsg)
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
+			log.Fatal("Append error:", err)
 		}
-		// TODO: pipelining
-		if msg[0] != "OK" || msg[1] != "BLOCK" || len(msg) != 4 {
-			fmt.Printf("Received %#v", msg)
-			os.Exit(1)
-		}
-		blockId := msg[2]
-		dataNodeAddress := msg[3]
 
-		dataNode, err := net.Dial("tcp", dataNodeAddress)
+		dataNode, err := net.Dial("tcp", nodesMsg.Nodes[0])
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
+			log.Fatal("DataNode dial error:", err)
 		}
 		defer dataNode.Close()
 
-		dataNodeStream := comm.NewEncodeDecoder(io.TeeReader(dataNode, os.Stdout), dataNode)
+		dataNodeCodec := util.LoggingClientCodec(
+			dataNode.RemoteAddr().String(),
+			jsonrpc.NewClientCodec(dataNode))
+		dataNodeClient := rpc.NewClientWithCodec(dataNodeCodec)
 
-		dataNodeStream.Encode("BLOCK", blockId)
-
-		msg, err = dataNodeStream.Decode()
+		var maxSize int64
+		err = dataNodeClient.Call("ClientSession.ForwardBlock",
+			&comm.ForwardBlock{nodesMsg.BlockId, []string{}},
+			&maxSize)
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		if msg[0] != "OK" || msg[1] != "MAXSIZE" || len(msg) != 3 {
-			fmt.Printf("Received %#v", msg)
-			os.Exit(1)
-		}
-		maxsize, err := strconv.ParseInt(msg[2], 10, 64)
-		if err != nil {
-			fmt.Print(err)
-			os.Exit(1)
+			log.Fatal("ForwardBlock error: ", err)
 		}
 
 		var size int64
-		if maxsize > bytesLeft {
+		if maxSize > bytesLeft {
 			size = bytesLeft
 			bytesLeft = 0
 		} else {
-			size = maxsize
-			bytesLeft = bytesLeft - maxsize
+			size = maxSize
+			bytesLeft = bytesLeft - maxSize
 		}
 
-		dataNodeStream.Encode("SIZE", strconv.FormatInt(size, 10))
-
-		msg, err = dataNodeStream.Decode()
+		err = dataNodeClient.Call("ClientSession.Size",
+			&size, nil)
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		if msg[0] != "OK" || len(msg) != 1 {
-			fmt.Printf("Received %#v", msg)
-			os.Exit(1)
+			log.Fatal("Size error: ", err)
 		}
 
-		// TODO: absolute paths
 		file, err := os.Open(localFileName)
 		if err != nil {
-			fmt.Print(err)
-			os.Exit(1)
+			log.Fatal("Open error: ", err)
 		}
 		defer file.Close()
 
 		io.CopyN(dataNode, file, size)
 
-		msg, err = dataNodeStream.Decode()
+		err = dataNodeClient.Call("ClientSession.Confirm", nil, nil)
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
+			log.Fatal("Confirm error: ", err)
 		}
-		if msg[0] != "OK" || len(msg) != 1 {
-			fmt.Printf("Received %#v", msg)
-			os.Exit(1)
+	}
+	/*
+	
+	var blobMsg comm.BlobName
+	err = decoder.Decode(&blobMsg)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(blobMsg.BlobId)
+
+	bytesLeft := localFileSize
+	for bytesLeft > 0 {
+		encoder.Encode(comm.Append{})
+		var nodesMsg comm.ForwardBlock
+		err := decoder.Decode(&nodesMsg)
+		if err != nil {
+			panic(err)
+		}
+		dataNode, err := net.Dial("tcp", nodesMsg.Nodes[0])
+		if err != nil {
+			panic(err)
+		}
+		defer dataNode.Close()
+		
+		dataNodeDecoder := util.NewDecoder(io.TeeReader(dataNode, os.Stdout))
+		dataNodeEncoder := util.NewEncoder(dataNode)
+
+		dataNodeEncoder.Encode(comm.ForwardBlock{nodesMsg.BlockId, nil})
+
+		var maxSizeMsg comm.MaxSize
+		err = dataNodeDecoder.Decode(&maxSizeMsg)
+		if err != nil {
+			panic(err)
 		}
 
-		ed.Encode("OK")
+		maxSize := maxSizeMsg.Size
+		var size int64
+		if maxSize > bytesLeft {
+			size = bytesLeft
+			bytesLeft = 0
+		} else {
+			size = maxSize
+			bytesLeft = bytesLeft - maxSize
+		}
+
+		dataNodeEncoder.Encode(comm.Size{size})
+
+		var okMsg comm.Ok
+		err = dataNodeDecoder.Decode(&okMsg)
+		if err != nil {
+			panic(err)
+		}
+
+		// TODO: absolute paths
+		file, err := os.Open(localFileName)
+		if err != nil {
+			panic(err)
+		}
+		defer file.Close()
+
+		io.CopyN(dataNode, file, size)
+
+		err = dataNodeDecoder.Decode(&okMsg)
+		if err != nil {
+			panic(err)
+		}
 	}
 
-	return true
+	encoder.Encode("OK")
+
+	*/
 }
