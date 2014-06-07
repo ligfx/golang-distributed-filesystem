@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
@@ -65,7 +66,7 @@ func (self *ClientSession) Confirm(_ *int, _ *int) error {
 	return nil	
 }
 
-func handleRequest(c net.Conn, debug bool) {
+func handleRequest(c net.Conn, dataDir string, debug bool) {
 	server := rpc.NewServer()
 	session := &ClientSession{Start, "", -1}
 	server.Register(session)
@@ -84,7 +85,7 @@ func handleRequest(c net.Conn, debug bool) {
 			return
 
 		case Streaming:
-			file, err := os.Create(session.blockId)
+			file, err := os.Create(path.Join(dataDir, session.blockId))
 			if err != nil {
 				log.Fatal("Create file '" + session.blockId + "' error:", err)
 			}
@@ -102,18 +103,52 @@ func handleRequest(c net.Conn, debug bool) {
 
 }
 
+func heartbeat(debug bool, port string) {
+	conn, err := net.Dial("tcp", "[::1]:5051")
+	if err != nil {
+		log.Fatal("Dial error:", err)
+	}
+	defer conn.Close()
+
+	codec := jsonrpc.NewClientCodec(conn)
+	if debug {
+		codec = util.LoggingClientCodec(
+			conn.RemoteAddr().String(),
+			codec)
+	}
+	client := rpc.NewClientWithCodec(codec)
+
+	err = client.Call("PeerSession.Register", port, nil)
+	if err != nil {
+		log.Fatal("Register error:", err)
+	}
+}
+
 func DataNode() {
 	var (
-		port = flag.String("port", "5052", "port to listen on")
+		port = flag.String("port", "0", "port to listen on (0=random)")
+		dataDir = flag.String("dataDir", "_blocks", "directory to store blocks")
 		debug = flag.Bool("debug", false, "Show RPC conversations")
 	)
 	flag.Parse()
 
-	socket := util.Listen(*port)
-	log.Print("Accepting connections on :" + *port)
+	err := os.MkdirAll(*dataDir, 0777)
+	if err != nil {
+		log.Fatal("Making directory '" + *dataDir + "': ", err)
+	}
+	log.Print("Block storage in directory '" + *dataDir + "'")
+
+	addr, socket := util.Listen(*port)
+	log.Print("Accepting connections on " + addr)
+
+	_, realport, err := net.SplitHostPort(addr)
+	if err != nil {
+		log.Fatalln("SplitHostPort error:", err)
+	}
+	go heartbeat(*debug, realport)
 
 	for {
 		conn := <- socket
-		go handleRequest(conn, *debug)
+		go handleRequest(conn, *dataDir, *debug)
 	}
 }

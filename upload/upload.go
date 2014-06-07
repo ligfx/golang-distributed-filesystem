@@ -40,7 +40,7 @@ func Upload() {
 	}
 	localFileSize := localFileInfo.Size()
 
-	conn, err := net.Dial("tcp", "localhost:5050")
+	conn, err := net.Dial("tcp", "[::1]:5050")
 	if err != nil {
 		log.Fatal("Dial error:", err)
 	}

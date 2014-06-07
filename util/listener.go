@@ -5,7 +5,7 @@ import (
 	"net"
 )
 
-func Listen(port string) chan net.Conn {
+func Listen(port string) (string, chan net.Conn) {
 	sock, err := net.Listen("tcp", ":" + port)
 	if err != nil {
 		log.Fatal(err)
@@ -20,5 +20,5 @@ func Listen(port string) chan net.Conn {
 			c <- conn
 		}
 	}()
-	return c
+	return sock.Addr().String(), c
 }
