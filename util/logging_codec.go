@@ -1,35 +1,52 @@
 package util
 
 import (
+	"fmt"
 	"log"
 	"net/rpc"
+	"reflect"
 )
 
 type loggingServerCodec struct {
 	remote string
 	rpc.ServerCodec
+	lastMethod string
 }
 
 func (self *loggingServerCodec) ReadRequestHeader(req *rpc.Request) error {
 	err := self.ServerCodec.ReadRequestHeader(req)
-	log.Println(self.remote, "->", req)
+	if err == nil {
+		self.lastMethod = req.ServiceMethod
+	}
 	return err
 }
 
 func (self *loggingServerCodec) ReadRequestBody(p interface{}) error {
 	err := self.ServerCodec.ReadRequestBody(p)
-	log.Println(self.remote, "->", p)
+	v := reflect.Indirect(reflect.ValueOf(p))
+	switch {
+	case err != nil:
+		log.Println(self.remote, "->", self.lastMethod, err)
+	case v.IsValid():
+		log.Println(self.remote, "->", self.lastMethod, fmt.Sprintf("%+v", v.Interface()))
+	default:
+		
+	}
 	return err
 }
 
 func (self *loggingServerCodec) WriteResponse(header *rpc.Response, body interface{}) error {
-	log.Println(self.remote, "<-", header)
-	log.Println(self.remote, "<-", body)
+	v := reflect.Indirect(reflect.ValueOf(body))
+	if v.IsValid() {
+		log.Println(self.remote, "<-", fmt.Sprintf("%+v", v.Interface()))
+	} else {
+		log.Println(self.remote, "<-", "ok")
+	}
 	return self.ServerCodec.WriteResponse(header, body)
 }
 
 func LoggingServerCodec(remote string, parent rpc.ServerCodec) rpc.ServerCodec {
-	return &loggingServerCodec{remote, parent}
+	return &loggingServerCodec{remote, parent, ""}
 }
 
 type loggingClientCodec struct {
@@ -37,22 +54,33 @@ type loggingClientCodec struct {
 	rpc.ClientCodec
 }
 
-func (self *loggingClientCodec) ReadResponseHeader(req *rpc.Response) error {
-	err := self.ClientCodec.ReadResponseHeader(req)
-	log.Println(self.remote, "->", req)
-	return err
+type clientRequest struct {
+	Method string         `json:"method"`
+    Params []interface{} `json:"params"`
 }
 
 func (self *loggingClientCodec) ReadResponseBody(p interface{}) error {
 	err := self.ClientCodec.ReadResponseBody(p)
-	log.Println(self.remote, "->", p)
+	v := reflect.Indirect(reflect.ValueOf(p))
+	switch {
+	case err != nil:
+		log.Println(self.remote, "->", err)
+	case v.IsValid():
+		log.Println(self.remote, "->", fmt.Sprintf("%+v", v.Interface()))
+	default:
+		log.Println(self.remote, "->", "ok")
+	}
 	return err
 }
 
-func (self *loggingClientCodec) WriteRequest(header *rpc.Request, body interface{}) error {
-	log.Println(self.remote, "<-", header)
-	log.Println(self.remote, "<-", body)
-	return self.ClientCodec.WriteRequest(header, body)
+func (self *loggingClientCodec) WriteRequest(r *rpc.Request, param interface{}) error {
+	v := reflect.Indirect(reflect.ValueOf(param))
+	if v.IsValid() {
+		log.Println(self.remote, "<-", r.ServiceMethod, fmt.Sprintf("%+v", v.Interface()))
+	} else {
+		log.Println(self.remote, "<-", r.ServiceMethod)
+	}
+	return self.ClientCodec.WriteRequest(r, param)
 }
 
 func LoggingClientCodec(remote string, parent rpc.ClientCodec) rpc.ClientCodec {

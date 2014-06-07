@@ -2,6 +2,7 @@
 package upload
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"strings"
 
 	"github.com/michaelmaltese/golang-distributed-filesystem/comm"
 	"github.com/michaelmaltese/golang-distributed-filesystem/util"
@@ -17,14 +19,24 @@ import (
 func Upload() {
 	var err error
 
-	if len(os.Args) != 2 {
-		fmt.Println("Usage: upload FILE")
-		os.Exit(1)
+	fmt.Println(strings.Join(os.Args, " "))
+
+	var (
+		localFileName = flag.String("file", "", "File to upload")
+		debug = flag.Bool("debug", false, "Show RPC conversation")
+	)
+	flag.Parse()
+
+	*localFileName = strings.TrimSpace(*localFileName)
+	if len(flag.Args()) != 0 || len(*localFileName) == 0 {
+		fmt.Println("Usage of " + os.Args[0] + ":")
+		flag.PrintDefaults()
+		os.Exit(2)
 	}
-	localFileName := os.Args[1]
-	localFileInfo, err := os.Stat(localFileName)
+
+	localFileInfo, err := os.Stat(*localFileName)
 	if err != nil {
-		panic(err)
+		log.Fatal("Stat error: ", err)
 	}
 	localFileSize := localFileInfo.Size()
 
@@ -34,9 +46,12 @@ func Upload() {
 	}
 	defer conn.Close()
 
-	codec := util.LoggingClientCodec(
-		conn.RemoteAddr().String(),
-		jsonrpc.NewClientCodec(conn))
+	codec := jsonrpc.NewClientCodec(conn)
+	if *debug {
+		codec = util.LoggingClientCodec(
+			conn.RemoteAddr().String(),
+			codec)
+	}
 	client := rpc.NewClientWithCodec(codec)
 
 	var blobId string
@@ -44,7 +59,6 @@ func Upload() {
 	if err != nil {
 		log.Fatal("CreateBlob error:", err)
 	}
-	fmt.Println("Blob ID:", blobId)
 
 	bytesLeft := localFileSize
 	for bytesLeft > 0 {
@@ -60,9 +74,13 @@ func Upload() {
 		}
 		defer dataNode.Close()
 
-		dataNodeCodec := util.LoggingClientCodec(
-			dataNode.RemoteAddr().String(),
-			jsonrpc.NewClientCodec(dataNode))
+
+		dataNodeCodec := jsonrpc.NewClientCodec(dataNode)
+		if *debug {
+			dataNodeCodec = util.LoggingClientCodec(
+				dataNode.RemoteAddr().String(),
+				dataNodeCodec)
+		}
 		dataNodeClient := rpc.NewClientWithCodec(dataNodeCodec)
 
 		var maxSize int64
@@ -88,7 +106,7 @@ func Upload() {
 			log.Fatal("Size error: ", err)
 		}
 
-		file, err := os.Open(localFileName)
+		file, err := os.Open(*localFileName)
 		if err != nil {
 			log.Fatal("Open error: ", err)
 		}
@@ -101,74 +119,10 @@ func Upload() {
 			log.Fatal("Confirm error: ", err)
 		}
 	}
-	/*
 	
-	var blobMsg comm.BlobName
-	err = decoder.Decode(&blobMsg)
+	err = client.Call("ClientSession.Commit", nil, nil)
 	if err != nil {
-		panic(err)
+		log.Fatal("Commit error:", err)
 	}
-	fmt.Println(blobMsg.BlobId)
-
-	bytesLeft := localFileSize
-	for bytesLeft > 0 {
-		encoder.Encode(comm.Append{})
-		var nodesMsg comm.ForwardBlock
-		err := decoder.Decode(&nodesMsg)
-		if err != nil {
-			panic(err)
-		}
-		dataNode, err := net.Dial("tcp", nodesMsg.Nodes[0])
-		if err != nil {
-			panic(err)
-		}
-		defer dataNode.Close()
-		
-		dataNodeDecoder := util.NewDecoder(io.TeeReader(dataNode, os.Stdout))
-		dataNodeEncoder := util.NewEncoder(dataNode)
-
-		dataNodeEncoder.Encode(comm.ForwardBlock{nodesMsg.BlockId, nil})
-
-		var maxSizeMsg comm.MaxSize
-		err = dataNodeDecoder.Decode(&maxSizeMsg)
-		if err != nil {
-			panic(err)
-		}
-
-		maxSize := maxSizeMsg.Size
-		var size int64
-		if maxSize > bytesLeft {
-			size = bytesLeft
-			bytesLeft = 0
-		} else {
-			size = maxSize
-			bytesLeft = bytesLeft - maxSize
-		}
-
-		dataNodeEncoder.Encode(comm.Size{size})
-
-		var okMsg comm.Ok
-		err = dataNodeDecoder.Decode(&okMsg)
-		if err != nil {
-			panic(err)
-		}
-
-		// TODO: absolute paths
-		file, err := os.Open(localFileName)
-		if err != nil {
-			panic(err)
-		}
-		defer file.Close()
-
-		io.CopyN(dataNode, file, size)
-
-		err = dataNodeDecoder.Decode(&okMsg)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	encoder.Encode("OK")
-
-	*/
+	fmt.Println("Blob ID:", blobId)
 }

@@ -69,6 +69,24 @@ func (self *ClientSession) Commit(_ *int, _ *int) error {
 	return nil
 }
 
+func (self *ClientSession) GetBlob(blobId *string, blocks *[]string) error {
+	if self.state != Start {
+		return errors.New("Not allowed in current session state")
+	}
+
+	*blocks = self.server.GetBlob(*blobId)
+	return nil
+}
+
+func (self *ClientSession) GetBlock(blockId *string, nodes *[]string) error {
+	if self.state != Start {
+		return errors.New("Not allowed in current session state")
+	}
+
+	*nodes = self.server.GetBlock(*blockId)
+	return nil
+}
+
 func handleClientConnection(conn net.Conn, state *MetaDataNodeState) {
 	server := rpc.NewServer()
 	server.Register(&ClientSession{Start, state, "", nil})
@@ -77,14 +95,6 @@ func handleClientConnection(conn net.Conn, state *MetaDataNodeState) {
 		jsonrpc.NewServerCodec(conn))
 	server.ServeCodec(codec)
 }
-
-/*
-	case comm.GetBlob:
-		session.Encode(comm.Blocks{state.GetBlob(msg.BlobId)})
-
-	case comm.GetBlock:
-		session.Encode(comm.DataNodes{state.GetBlock(msg.BlockId)})
-}*/
 
 type MetaDataNodeState struct {
 	mutex sync.Mutex
@@ -104,6 +114,7 @@ func (self *MetaDataNodeState) GetBlob(blob_id string) []string {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
+	log.Println(self.blobs[blob_id])
 	return self.blobs[blob_id]
 }
 

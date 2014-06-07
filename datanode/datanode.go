@@ -87,8 +87,8 @@ func handleRequest(c net.Conn) {
 			if err != nil {
 				log.Fatal("Create file '" + session.blockId + "' error:", err)
 			}
-			defer file.Close()
 			_, err = io.CopyN(file, c, session.size)
+			file.Close()
 			if err != nil {
 				log.Fatal("Copying error: ", err)
 			}
