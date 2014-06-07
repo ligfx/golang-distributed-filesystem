@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -160,7 +161,28 @@ func handleRequest(c net.Conn) {
 
 }
 
-func register() {
+var (
+	DataDir string
+	Debug bool
+	NodeID string
+	Port string
+)
+
+func DataNode() {
+	port := flag.String("port", "0", "port to listen on (0=random)")
+	flag.StringVar(&DataDir, "dataDir", "_blocks", "directory to store blocks")
+	flag.BoolVar(&Debug, "debug", false, "Show RPC conversations")
+	flag.Parse()
+
+	addr, socket := util.Listen(*port)
+	log.Print("Accepting connections on " + addr)
+	_, realPort, err := net.SplitHostPort(addr)
+	Port = realPort
+	if err != nil {
+		log.Fatalln("SplitHostPort error:", err)
+	}
+	
+	// Register
 	conn, err := net.Dial("tcp", "[::1]:5051")
 	if err != nil {
 		log.Fatal("Dial error:", err)
@@ -181,37 +203,29 @@ func register() {
 	}
 
 	log.Println("Registered with ID '" + NodeID + "'")
-}
 
-var (
-	DataDir string
-	Debug bool
-	NodeID string
-	Port string
-)
-
-func DataNode() {
-	port := flag.String("port", "0", "port to listen on (0=random)")
-	flag.StringVar(&DataDir, "dataDir", "_blocks", "directory to store blocks")
-	flag.BoolVar(&Debug, "debug", false, "Show RPC conversations")
-	flag.Parse()
-
-	err := os.MkdirAll(DataDir, 0777)
+	err = os.MkdirAll(DataDir, 0777)
 	if err != nil {
 		log.Fatal("Making directory '" + DataDir + "': ", err)
 	}
 	log.Print("Block storage in directory '" + DataDir + "'")
 
-	addr, socket := util.Listen(*port)
-	log.Print("Accepting connections on " + addr)
+	// Send blocks
+	go func() {
+		defer client.Close()
 
-	_, realPort, err := net.SplitHostPort(addr)
-	Port = realPort
-	if err != nil {
-		log.Fatalln("SplitHostPort error:", err)
-	}
-	
-	go register()
+		files, err := ioutil.ReadDir(DataDir)
+		if err != nil {
+			log.Fatal("Reading directory '" + DataDir + "': ", err)
+		}
+
+		for _, f := range files {
+			err = client.Call("PeerSession.HaveBlock", &comm.HaveBlock{f.Name(), NodeID}, nil)
+			if err != nil {
+				log.Fatalln("HaveBlock error:", err)
+			}
+		}
+	}()
 
 	for {
 		conn := <- socket
