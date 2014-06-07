@@ -9,15 +9,16 @@ import (
 
 type MetaDataNodeState struct {
 	mutex sync.Mutex
-	dataNodes []string
+	dataNodes map[string]string
 	blobs map[string][]string
 	blocks map[string][]string
 }
 
 func NewMetaDataNodeState() *MetaDataNodeState {
 	var self MetaDataNodeState
-	self.dataNodes = []string{}
+	self.dataNodes = make(map[string]string)
 	self.blobs = make(map[string][]string)
+	self.blocks = make(map[string][]string)
 	return &self
 }
 
@@ -45,26 +46,48 @@ func (self *MetaDataNodeState) GetBlob(blob_id string) []string {
 	return self.blobs[blob_id]
 }
 
-func (self *MetaDataNodeState) GetBlock(block_id string) []string {
+func (self *MetaDataNodeState) HasBlock(addr string, blockId string) {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
-	return self.blocks[block_id]
+	self.blocks[blockId] = append(self.blocks[blockId], addr)
 }
 
-func (self *MetaDataNodeState) RegisterDataNode(addr string) {
+func (self *MetaDataNodeState) GetBlock(blockID string) []string {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
-	self.dataNodes = append(self.dataNodes, addr)
+
+	var addrs []string
+	for _, nodeID := range self.blocks[blockID] {
+		addrs = append(addrs, self.dataNodes[nodeID])
+	}
+
+	return addrs
+}
+
+func (self *MetaDataNodeState) RegisterDataNode(addr string) string {
+	u4, err := uuid.NewV4()
+	if err != nil {
+		log.Fatal(err)
+	}
+	nodeId := u4.String()
+
+	self.mutex.Lock()
+	defer self.mutex.Unlock()
+	self.dataNodes[nodeId] = addr
+	return nodeId
 }
 
 func (self *MetaDataNodeState) GetDataNodes() []string {
 	// Is this lock necessary?
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
-	l := make([]string, len(self.dataNodes))
-	copy(l, self.dataNodes)
-	return l
+
+	var addrs []string
+	for _, addr := range self.dataNodes {
+		addrs = append(addrs, addr)
+	}
+	return addrs
 }
 
 func (self *MetaDataNodeState) CommitBlob(name string, blocks []string) {

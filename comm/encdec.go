@@ -5,3 +5,8 @@ type ForwardBlock struct {
 	BlockId string
 	Nodes []string
 }
+
+type HaveBlock struct {
+	BlockId string
+	NodeId string
+}

@@ -4,6 +4,7 @@ package datanode
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -20,17 +21,37 @@ type ClientSessionState int
 const (
 	Start ClientSessionState = iota
 	SizeNegotiation
-	Streaming
-	ReadyToConfirm
 	Done
+	Receiving
+	Sending
+	ReadyToConfirm
 )
 type ClientSession struct {
 	state ClientSessionState
+	connection net.Conn
 	blockId string
 	size int64
 }
 
 const MaxSize = int64(128 * 1024 * 1024)
+
+func (self *ClientSession) GetBlock(blockID *string, size *int64) error {
+	if self.state != Start {
+		return errors.New("Not allowed in current session state")
+	}
+
+	fileInfo, err := os.Stat(path.Join(DataDir, *blockID))
+	if err != nil {
+		log.Fatal("Stat error: ", err)
+	}
+	self.size = fileInfo.Size()
+	*size = self.size
+
+	self.blockId = *blockID
+	self.state = Sending
+
+	return nil
+}
 
 func (self *ClientSession) ForwardBlock(blockMsg *comm.ForwardBlock, maxSize *int64) error {
 	if self.state != Start {
@@ -52,7 +73,7 @@ func (self *ClientSession) Size(size *int64, _ *int) error {
 		return errors.New("Bad size")
 	}
 
-	self.state = Streaming
+	self.state = Receiving
 	self.size = *size
 	return nil
 }
@@ -62,16 +83,37 @@ func (self *ClientSession) Confirm(_ *int, _ *int) error {
 		return errors.New("Not allowed in current session state")
 	}
 
+	metaDataNodeConn, err := net.Dial("tcp", "[::1]:5051")
+	if err != nil {
+		log.Fatalln("Dial error:", err)
+	}
+
+	metaDataNodeCodec := jsonrpc.NewClientCodec(metaDataNodeConn)
+	if Debug {
+		metaDataNodeCodec = util.LoggingClientCodec(
+			metaDataNodeConn.RemoteAddr().String(),
+			metaDataNodeCodec)
+	}
+	metaDataNode := rpc.NewClientWithCodec(metaDataNodeCodec)
+	defer metaDataNode.Close()
+
+	err = metaDataNode.Call("PeerSession.HaveBlock", &comm.HaveBlock{self.blockId, NodeID}, nil)
+	if err != nil {
+		log.Fatalln("HaveBlock error:", err)
+	}
+
+	self.blockId = ""
+	self.size = -1
 	self.state = Done
 	return nil	
 }
 
-func handleRequest(c net.Conn, dataDir string, debug bool) {
+func handleRequest(c net.Conn) {
 	server := rpc.NewServer()
-	session := &ClientSession{Start, "", -1}
+	session := &ClientSession{Start, c, "", -1}
 	server.Register(session)
 	codec := jsonrpc.NewServerCodec(c)
-	if debug {
+	if Debug {
 		codec = util.LoggingServerCodec(
 			c.RemoteAddr().String(),
 			codec)
@@ -84,8 +126,8 @@ func handleRequest(c net.Conn, dataDir string, debug bool) {
 		case Done:
 			return
 
-		case Streaming:
-			file, err := os.Create(path.Join(dataDir, session.blockId))
+		case Receiving:
+			file, err := os.Create(path.Join(DataDir, session.blockId))
 			if err != nil {
 				log.Fatal("Create file '" + session.blockId + "' error:", err)
 			}
@@ -96,14 +138,29 @@ func handleRequest(c net.Conn, dataDir string, debug bool) {
 			}
 
 			log.Println("Received block '" + session.blockId + "' from " + c.RemoteAddr().String())
-
+			
 			session.state = ReadyToConfirm
+
+		case Sending:
+			file, err := os.Open(path.Join(DataDir, session.blockId))
+			if err != nil {
+				log.Fatal("Open file '" + session.blockId + "' error:", err)
+			}
+			fmt.Println("Copying")
+			fmt.Fprint(c, "hi there")
+			_, err = io.CopyN(c, file, session.size)
+			file.Close()
+			fmt.Println("Done copying")
+			if err != nil {
+				log.Fatal("Copying error: ", err)
+			}
+			session.state = Start
 		}
 	}
 
 }
 
-func heartbeat(debug bool, port string) {
+func register() {
 	conn, err := net.Dial("tcp", "[::1]:5051")
 	if err != nil {
 		log.Fatal("Dial error:", err)
@@ -111,44 +168,53 @@ func heartbeat(debug bool, port string) {
 	defer conn.Close()
 
 	codec := jsonrpc.NewClientCodec(conn)
-	if debug {
+	if Debug {
 		codec = util.LoggingClientCodec(
 			conn.RemoteAddr().String(),
 			codec)
 	}
 	client := rpc.NewClientWithCodec(codec)
 
-	err = client.Call("PeerSession.Register", port, nil)
+	err = client.Call("PeerSession.Register", Port, &NodeID)
 	if err != nil {
 		log.Fatal("Register error:", err)
 	}
+
+	log.Println("Registered with ID '" + NodeID + "'")
 }
 
+var (
+	DataDir string
+	Debug bool
+	NodeID string
+	Port string
+)
+
 func DataNode() {
-	var (
-		port = flag.String("port", "0", "port to listen on (0=random)")
-		dataDir = flag.String("dataDir", "_blocks", "directory to store blocks")
-		debug = flag.Bool("debug", false, "Show RPC conversations")
-	)
+	port := flag.String("port", "0", "port to listen on (0=random)")
+	flag.StringVar(&DataDir, "dataDir", "_blocks", "directory to store blocks")
+	flag.BoolVar(&Debug, "debug", false, "Show RPC conversations")
 	flag.Parse()
 
-	err := os.MkdirAll(*dataDir, 0777)
+	err := os.MkdirAll(DataDir, 0777)
 	if err != nil {
-		log.Fatal("Making directory '" + *dataDir + "': ", err)
+		log.Fatal("Making directory '" + DataDir + "': ", err)
 	}
-	log.Print("Block storage in directory '" + *dataDir + "'")
+	log.Print("Block storage in directory '" + DataDir + "'")
 
 	addr, socket := util.Listen(*port)
 	log.Print("Accepting connections on " + addr)
 
-	_, realport, err := net.SplitHostPort(addr)
+	_, realPort, err := net.SplitHostPort(addr)
+	Port = realPort
 	if err != nil {
 		log.Fatalln("SplitHostPort error:", err)
 	}
-	go heartbeat(*debug, realport)
+	
+	go register()
 
 	for {
 		conn := <- socket
-		go handleRequest(conn, *dataDir, *debug)
+		go handleRequest(conn)
 	}
 }
