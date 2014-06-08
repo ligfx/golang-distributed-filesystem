@@ -29,10 +29,8 @@ func (self *ClientSession) Append(_ *int, ret *ForwardBlock) error {
 		return errors.New("Not allowed in current session state")
 	}
 
-	blockId := self.server.GenerateBlockId()
-	self.blocks = append(self.blocks, blockId)
-
-	*ret = ForwardBlock{blockId, self.server.GetDataNodes(), 128 * 1024 * 1024}
+	*ret = self.server.GenerateBlock(self.blob_id)
+	self.blocks = append(self.blocks, ret.BlockID)
 	return nil
 }
 

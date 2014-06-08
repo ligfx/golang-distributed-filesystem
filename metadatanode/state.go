@@ -195,12 +195,27 @@ func (self *MetaDataNodeState) GenerateBlobId() string {
 	return u4.String()
 }
 
-func (self *MetaDataNodeState) GenerateBlockId() BlockID {
+func (self *MetaDataNodeState) GenerateBlock(blob string) ForwardBlock {
 	u4, err := uuid.NewV4()
 	if err != nil {
 		log.Fatalln(err)
 	}
-	return BlockID(u4.String())
+	block := BlockID(blob + ":" + u4.String())
+
+	nodes := self.LeastUsedNodes()
+	var forwardTo []NodeID
+	if len(nodes) < self.ReplicationFactor {
+		forwardTo = nodes
+	} else {
+		forwardTo = nodes[0:self.ReplicationFactor]
+	}
+	var addrs []string
+	for _, nodeID := range forwardTo {
+		addrs = append(addrs, self.dataNodes[nodeID])
+	}
+
+	self.replicationIntents.Add(block, nil, forwardTo)
+	return ForwardBlock{block, addrs, 128 * 1024 * 1024}
 }
 
 func (self *MetaDataNodeState) GetBlob(blobID string) []BlockID {
@@ -336,27 +351,6 @@ func (self *MetaDataNodeState) MostUsedNodes() []NodeID {
 	sort.Stable(sort.Reverse(ByUtilization(nodes)))
 
 	return nodes
-}
-
-func (self *MetaDataNodeState) GetDataNodes() []string {
-	self.mutex.Lock()
-	self.mutex.Unlock()
-	nodes := self.LeastUsedNodes()
-	
-	var forwardTo []NodeID
-	if len(nodes) < self.ReplicationFactor {
-		forwardTo = nodes
-	} else {
-		forwardTo = nodes[0:self.ReplicationFactor]
-	}
-
-	var addrs []string
-	for _, nodeID := range forwardTo {
-		self.dataNodesUtilization[nodeID] += 1
-		addrs = append(addrs, self.dataNodes[nodeID])
-	}
-
-	return addrs
 }
 
 func (self *MetaDataNodeState) CommitBlob(name string, blocks []BlockID) {
