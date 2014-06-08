@@ -10,7 +10,8 @@ type ForwardBlock struct {
 type HeartbeatMsg struct {
 	NodeID string
 	SpaceUsed int
-	BlockIDs []string
+	NewBlocks []string
+	DeadBlocks []string
 }
 
 type HeartbeatResponse struct {

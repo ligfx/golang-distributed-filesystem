@@ -17,7 +17,7 @@ type MetaDataNodeState struct {
 	dataNodesLastSeen map[string]time.Time
 	dataNodesUtilization map[string]int
 	blocks map[string]map[string]bool
-	dataNodesBlocks map[string][]string
+	dataNodesBlocks map[string]map[string]bool
 	ReplicationFactor int
 }
 
@@ -33,7 +33,7 @@ func NewMetaDataNodeState() *MetaDataNodeState {
 	self.dataNodes = map[string]string{}
 	self.dataNodesUtilization = map[string]int{}
 	self.blocks = map[string]map[string]bool{}
-	self.dataNodesBlocks = map[string][]string{}
+	self.dataNodesBlocks = map[string]map[string]bool{}
 	return &self
 }
 
@@ -64,15 +64,34 @@ func (self *MetaDataNodeState) GetBlob(blobID string) []string {
 	return blocks
 }
 
-func (self *MetaDataNodeState) HasBlock(nodeID string, blockID string) {
+func (self *MetaDataNodeState) HasBlocks(nodeID string, blockIDs []string) {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
-	if self.blocks[blockID] == nil {
-		self.blocks[blockID] = map[string]bool{}
+	for _, blockID := range blockIDs {
+		if self.blocks[blockID] == nil {
+			self.blocks[blockID] = map[string]bool{}
+		}
+		if self.dataNodesBlocks[nodeID] == nil {
+			self.dataNodesBlocks[nodeID] = map[string]bool{}
+		}
+		self.blocks[blockID][nodeID] = true
+		self.dataNodesBlocks[nodeID][blockID] = true
 	}
-	self.blocks[blockID][nodeID] = true
-	self.dataNodesBlocks[nodeID] = append(self.dataNodesBlocks[nodeID], blockID)
+}
+
+func (self *MetaDataNodeState) DoesntHaveBlocks(nodeID string, blockIDs []string) {
+	self.mutex.Lock()
+	defer self.mutex.Unlock()
+
+	for _, blockID := range blockIDs {
+		if self.blocks[blockID] != nil {
+			delete(self.blocks[blockID], nodeID)
+		}
+		if self.dataNodesBlocks[nodeID] != nil {
+			delete(self.dataNodesBlocks[nodeID], blockID)
+		}
+	}
 }
 
 func (self *MetaDataNodeState) GetBlock(blockID string) []string {
@@ -181,7 +200,7 @@ func monitor() {
 				delete(State.dataNodesLastSeen, id)
 				delete(State.dataNodes, id)
 				delete(State.dataNodesUtilization, id)
-				for _, block := range State.dataNodesBlocks[id] {
+				for block, _ := range State.dataNodesBlocks[id] {
 					delete(State.blocks[block], id)
 				}
 				delete(State.dataNodesBlocks, id)

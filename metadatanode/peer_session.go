@@ -19,12 +19,15 @@ func (self *PeerSession) Heartbeat (msg *comm.HeartbeatMsg, resp *comm.Heartbeat
 	resp.NeedToRegister = ! self.server.HeartbeatFrom(msg.NodeID, msg.SpaceUsed)
 	if ! resp.NeedToRegister {
 		log.Println("Heartbeat from '" + msg.NodeID + "', space used", msg.SpaceUsed)
-		for _, blockID := range msg.BlockIDs {
-			self.server.HasBlock(msg.NodeID, blockID)
+		self.server.HasBlocks(msg.NodeID, msg.NewBlocks)
+		for _, blockID := range msg.NewBlocks {
 			log.Println("Block '" + blockID + "' registered to " + msg.NodeID)
-
 			// Pathological MDN
 			// resp.InvalidateBlocks = append(resp.InvalidateBlocks, blockID)
+		}
+		self.server.DoesntHaveBlocks(msg.NodeID, msg.DeadBlocks)
+		for _, blockID := range msg.DeadBlocks {
+			log.Println("Block '" + blockID + "' de-registered from " + msg.NodeID)
 		}
 	}
 	return nil

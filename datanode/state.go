@@ -17,7 +17,8 @@ import (
 
 type DataNodeState struct {
 	mutex sync.Mutex
-	staleBlocks []string
+	newBlocks []string
+	deadBlocks []string
 	NodeID string
 	heartbeatInterval time.Duration
 }
@@ -26,16 +27,32 @@ func (self *DataNodeState) HaveBlocks(blockIDs []string) {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
-	self.staleBlocks = append(self.staleBlocks, blockIDs...)
+	self.newBlocks = append(self.newBlocks, blockIDs...)
 }
 
-func (self *DataNodeState) DrainStaleBlocks() []string {
+func (self *DataNodeState) DontHaveBlocks(blockIDs []string) {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
-	staleBlocks := self.staleBlocks
-	self.staleBlocks = []string{}
-	return staleBlocks
+	self.deadBlocks = append(self.deadBlocks, blockIDs...)
+}
+
+func (self *DataNodeState) DrainNewBlocks() []string {
+	self.mutex.Lock()
+	defer self.mutex.Unlock()
+
+	newBlocks := self.newBlocks
+	self.newBlocks = []string{}
+	return newBlocks
+}
+
+func (self *DataNodeState) DrainDeadBlocks() []string {
+	self.mutex.Lock()
+	defer self.mutex.Unlock()
+
+	deadBlocks := self.deadBlocks
+	self.deadBlocks = []string{}
+	return deadBlocks
 }
 
 func heartbeat() {
@@ -79,17 +96,18 @@ func tick() {
 	}
 	spaceUsed := len(files)
 
-	staleBlocks := State.DrainStaleBlocks()
+	newBlocks := State.DrainNewBlocks()
+	deadBlocks := State.DrainDeadBlocks()
 	var resp comm.HeartbeatResponse
 	err = client.Call("PeerSession.Heartbeat",
-		comm.HeartbeatMsg{State.NodeID, spaceUsed, staleBlocks},
+		comm.HeartbeatMsg{State.NodeID, spaceUsed, newBlocks, deadBlocks},
 		&resp)
 	if err != nil {
 		log.Fatalln("Heartbeat error:", err)
 	}
 	if resp.NeedToRegister {
 		log.Println("Re-registering with leader...")
-		State.HaveBlocks(staleBlocks) // Try again next heartbeat
+		State.HaveBlocks(newBlocks) // Try again next heartbeat
 		register(client)
 		return
 	}
@@ -100,6 +118,7 @@ func tick() {
 			log.Fatalln("Error removing '" + blockID + "':", err)
 		}
 	}
+	State.DontHaveBlocks(resp.InvalidateBlocks)
 }
 
 func register(client *rpc.Client) {
