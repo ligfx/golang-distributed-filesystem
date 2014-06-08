@@ -12,46 +12,81 @@ import (
 	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
 )
 
+type replicationIntent struct {
+	startedAt time.Time
+	sentCommand bool
+	block BlockID
+	availableFrom []NodeID
+	forwardTo []NodeID
+}
+
 type ReplicationIntents struct {
-	startedAt map[BlockID]time.Time
-	sentCommand map[BlockID]bool
-	availableFrom map[BlockID][]NodeID
-	forwardTo map[BlockID][]NodeID
+	intents []*replicationIntent
 }
 
 func (self *ReplicationIntents) Add(block BlockID, from []NodeID, to []NodeID) {
 	if self.InProgress(block) {
-		log.Fatalln("Already replicating block '" + block + "'")
+		log.Fatalln("Already replicating block '" + string(block))
 	}
-	self.startedAt[block] = time.Now()
-	self.availableFrom[block] = from
-	self.forwardTo[block] = to
+	self.intents = append(self.intents, &replicationIntent{time.Now(), false, block, from, to})
+}
+
+func (self *ReplicationIntents) Count(node NodeID) int {
+	count := 0
+	for _, intent := range self.intents {
+		for _, n := range intent.forwardTo {
+			if n == node {
+				if time.Since(intent.startedAt) < 20 * time.Second {
+					count++
+				}
+			}
+		}
+	}
+	return count
 }
 
 func (self *ReplicationIntents) Get(node NodeID) map[BlockID][]NodeID {
 	actions := map[BlockID][]NodeID{}
-	for block, nodes := range self.availableFrom {
-		if self.sentCommand[block] {
+	for _, intent := range self.intents {
+		if intent.sentCommand {
 			continue
 		}
-		for _, anode := range nodes {
-			if anode == node {
-				actions[block] = self.forwardTo[block]
-				self.sentCommand[block] = true
+		for _, n := range intent.availableFrom {
+			if n == node {
+				actions[intent.block] = intent.forwardTo
+				intent.sentCommand = true
+				intent.startedAt = time.Now()
 			}
 		}
 	}
 	return actions
 }
 
-func (self *ReplicationIntents) InProgress(block BlockID) bool {
-	if time.Since(self.startedAt[block]) < 20 * time.Second {
-		return true
+func (self *ReplicationIntents) Done(node NodeID, block BlockID) {
+	for i, intent := range self.intents {
+		if intent.block != block {
+			continue
+		}
+		for j, n := range intent.forwardTo {
+			if n == node {
+				intent.forwardTo = append(intent.forwardTo[:j], intent.forwardTo[j+1:]...)
+			}
+		}
+		if len(intent.forwardTo) == 0 {
+			self.intents = append(self.intents[:i], self.intents[i+1:]...)
+		}
 	}
-	delete(self.sentCommand, block)
-	delete(self.startedAt, block)
-	delete(self.availableFrom, block)
-	delete(self.forwardTo, block)
+}
+
+func (self *ReplicationIntents) InProgress(block BlockID) bool {
+	for i, intent := range self.intents {
+		if intent.block == block {
+			if time.Since(intent.startedAt) < 20 * time.Second {
+				return true
+			}
+			self.intents = append(self.intents[:i], self.intents[i+1:]...)
+		}
+	}
 	return false
 }
 
@@ -143,10 +178,6 @@ func NewMetaDataNodeState() *MetaDataNodeState {
 		log.Fatalln("Metadata store error:", err)
 	}
 	self.store = db
-	self.replicationIntents.startedAt = map[BlockID]time.Time{}
-	self.replicationIntents.availableFrom = map[BlockID][]NodeID{}
-	self.replicationIntents.forwardTo = map[BlockID][]NodeID{}
-	self.replicationIntents.sentCommand = map[BlockID]bool{}
 
 	self.dataNodesLastSeen = map[NodeID]time.Time{}
 	self.dataNodes = map[NodeID]string{}
@@ -195,6 +226,7 @@ func (self *MetaDataNodeState) HasBlocks(nodeID NodeID, blocks []BlockID) {
 	defer self.mutex.Unlock()
 
 	for _, blockID := range blocks {
+		self.replicationIntents.Done(nodeID, blockID)
 		if self.blocks[blockID] == nil {
 			self.blocks[blockID] = map[NodeID]bool{}
 		}
@@ -276,8 +308,8 @@ func (s ByUtilization) Swap(i, j int) {
     s[i], s[j] = s[j], s[i]
 }
 func (s ByUtilization) Less(i, j int) bool {
-	iu := State.dataNodesUtilization[s[i]] - State.deletionIntents.Count(s[i])
-	ju := State.dataNodesUtilization[s[j]] - State.deletionIntents.Count(s[j])
+	iu := State.dataNodesUtilization[s[i]] + State.replicationIntents.Count(s[i]) - State.deletionIntents.Count(s[i])
+	ju := State.dataNodesUtilization[s[j]] + State.replicationIntents.Count(s[j]) - State.deletionIntents.Count(s[j])
     return iu < ju
 }
 

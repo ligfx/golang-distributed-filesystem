@@ -21,7 +21,7 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [x] Have MetaDataNode manage the block size stuff (in HDFS, clients can change this per-file)
 - [x] Re-replicate blocks when a DataNode disappears
 - [x] Drop over-replicated blocks when a DataNode comes up
-- [ ] Looking at DataNode utilization should take into account the DeletionIntents and ReplicationIntents
+- [x] Looking at DataNode utilization should take into account the DeletionIntents and ReplicationIntents
 - [ ] Grace period for replicating new and just-registered blocks
 - [ ] MetaDataNode balances blocks as it runs
 - [ ] If a client tries to upload a block and every DataNode in its list is down, it needs to get more from the MetaDataNode.
