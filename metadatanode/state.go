@@ -75,6 +75,18 @@ func (self *DeletionIntents) Add(block BlockID, from []NodeID) {
 	}
 }
 
+func (self *DeletionIntents) Count(node NodeID) int {
+	var deletions []BlockID
+	for _, intent := range self.intents {
+		if intent.node == node {
+			if time.Since(intent.startedAt) < 20 * time.Second {
+				deletions = append(deletions, intent.block)
+			}
+		}
+	}
+	return len(deletions)
+}
+
 func (self *DeletionIntents) Get(node NodeID) []BlockID {
 	var deletions []BlockID
 	for _, intent := range self.intents {
@@ -82,13 +94,20 @@ func (self *DeletionIntents) Get(node NodeID) []BlockID {
 			continue
 		}
 		if intent.node == node {
-			log.Printf("%+v", intent)
 			deletions = append(deletions, intent.block)
 			intent.sentCommand = true
 			intent.startedAt = time.Now()
 		}
 	}
 	return deletions
+}
+
+func (self *DeletionIntents) Done(node NodeID, block BlockID) {
+	for i, intent := range self.intents {
+		if intent.node == node && intent.block == block {
+			self.intents = append(self.intents[:i], self.intents[i+1:]...)
+		}
+	}
 }
 
 func (self *DeletionIntents) InProgress(block BlockID) bool {
@@ -192,6 +211,7 @@ func (self *MetaDataNodeState) DoesntHaveBlocks(nodeID NodeID, blockIDs []BlockI
 	defer self.mutex.Unlock()
 
 	for _, blockID := range blockIDs {
+		self.deletionIntents.Done(nodeID, blockID)
 		if self.blocks[blockID] != nil {
 			delete(self.blocks[blockID], nodeID)
 		}
@@ -256,12 +276,14 @@ func (s ByUtilization) Swap(i, j int) {
     s[i], s[j] = s[j], s[i]
 }
 func (s ByUtilization) Less(i, j int) bool {
-    return State.dataNodesUtilization[s[i]] < State.dataNodesUtilization[s[j]]
+	iu := State.dataNodesUtilization[s[i]] - State.deletionIntents.Count(s[i])
+	ju := State.dataNodesUtilization[s[j]] - State.deletionIntents.Count(s[j])
+    return iu < ju
 }
 
 
 // This is not concurrency safe
-func (self *MetaDataNodeState) NodesByUtilization() []NodeID {
+func (self *MetaDataNodeState) LeastUsedNodes() []NodeID {
 	var nodes []NodeID
 	for nodeID, _ := range self.dataNodes {
 		nodes = append(nodes, nodeID)
@@ -272,11 +294,22 @@ func (self *MetaDataNodeState) NodesByUtilization() []NodeID {
 
 	return nodes
 }
+func (self *MetaDataNodeState) MostUsedNodes() []NodeID {
+	var nodes []NodeID
+	for nodeID, _ := range self.dataNodes {
+		nodes = append(nodes, nodeID)
+	}
+
+	sort.Sort(ByRandom(nodes))
+	sort.Stable(sort.Reverse(ByUtilization(nodes)))
+
+	return nodes
+}
 
 func (self *MetaDataNodeState) GetDataNodes() []string {
 	self.mutex.Lock()
 	self.mutex.Unlock()
-	nodes := self.NodesByUtilization()
+	nodes := self.LeastUsedNodes()
 	
 	var forwardTo []NodeID
 	if len(nodes) < self.ReplicationFactor {
@@ -322,7 +355,6 @@ func monitor() {
 		}
 
 		for blockID, nodes := range State.blocks {
-			nodesByUtilization := State.NodesByUtilization()
 			switch {
 			default:
 
@@ -335,6 +367,7 @@ func monitor() {
 			case len(nodes) > State.ReplicationFactor:
 				log.Println("Block '" + blockID + "' is over-replicated")
 				var deleteFrom []NodeID
+				nodesByUtilization := State.MostUsedNodes()
 				for _, nodeID := range nodesByUtilization {
 					if len(nodes) - len(deleteFrom) <= State.ReplicationFactor {
 						break
@@ -349,6 +382,7 @@ func monitor() {
 			case len(nodes) < State.ReplicationFactor:
 				log.Println("Block '" + blockID + "' is under-replicated!")
 				var forwardTo []NodeID
+				nodesByUtilization := State.LeastUsedNodes()
 				for _, nodeID := range nodesByUtilization {
 					if len(forwardTo) + len(nodes) >= State.ReplicationFactor {
 						break
