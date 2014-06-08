@@ -8,16 +8,62 @@ import (
 	"time"
 
 	"github.com/nu7hatch/gouuid"
+
+	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
 )
+
+type ReplicationIntents struct {
+	startedAt map[BlockID]time.Time
+	sentCommand map[BlockID]bool
+	availableFrom map[BlockID][]NodeID
+	forwardTo map[BlockID][]NodeID
+}
+
+func (self *ReplicationIntents) Add(block BlockID, from []NodeID, to []NodeID) {
+	if self.InProgress(block) {
+		log.Fatalln("Already replicating block '" + block + "'")
+	}
+	self.startedAt[block] = time.Now()
+	self.availableFrom[block] = from
+	self.forwardTo[block] = to
+}
+
+func (self *ReplicationIntents) Get(node NodeID) map[BlockID][]NodeID {
+	actions := map[BlockID][]NodeID{}
+	for block, nodes := range self.availableFrom {
+		if self.sentCommand[block] {
+			continue
+		}
+		for _, anode := range nodes {
+			if anode == node {
+				actions[block] = self.forwardTo[block]
+				self.sentCommand[block] = true
+			}
+		}
+	}
+	return actions
+}
+
+func (self *ReplicationIntents) InProgress(block BlockID) bool {
+	if time.Since(self.startedAt[block]) < 20 * time.Second {
+		return true
+	}
+	delete(self.sentCommand, block)
+	delete(self.startedAt, block)
+	delete(self.availableFrom, block)
+	delete(self.forwardTo, block)
+	return false
+}
 
 type MetaDataNodeState struct {
 	mutex sync.Mutex
 	store *DB
-	dataNodes map[string]string
-	dataNodesLastSeen map[string]time.Time
-	dataNodesUtilization map[string]int
-	blocks map[string]map[string]bool
-	dataNodesBlocks map[string]map[string]bool
+	dataNodes map[NodeID]string
+	dataNodesLastSeen map[NodeID]time.Time
+	dataNodesUtilization map[NodeID]int
+	blocks map[BlockID]map[NodeID]bool
+	dataNodesBlocks map[NodeID]map[BlockID]bool
+	replicationIntents ReplicationIntents
 	ReplicationFactor int
 }
 
@@ -29,11 +75,16 @@ func NewMetaDataNodeState() *MetaDataNodeState {
 		log.Fatalln("Metadata store error:", err)
 	}
 	self.store = db
-	self.dataNodesLastSeen = map[string]time.Time{}
-	self.dataNodes = map[string]string{}
-	self.dataNodesUtilization = map[string]int{}
-	self.blocks = map[string]map[string]bool{}
-	self.dataNodesBlocks = map[string]map[string]bool{}
+	self.replicationIntents.startedAt = map[BlockID]time.Time{}
+	self.replicationIntents.availableFrom = map[BlockID][]NodeID{}
+	self.replicationIntents.forwardTo = map[BlockID][]NodeID{}
+	self.replicationIntents.sentCommand = map[BlockID]bool{}
+
+	self.dataNodesLastSeen = map[NodeID]time.Time{}
+	self.dataNodes = map[NodeID]string{}
+	self.dataNodesUtilization = map[NodeID]int{}
+	self.blocks = map[BlockID]map[NodeID]bool{}
+	self.dataNodesBlocks = map[NodeID]map[BlockID]bool{}
 	return &self
 }
 
@@ -45,42 +96,49 @@ func (self *MetaDataNodeState) GenerateBlobId() string {
 	return u4.String()
 }
 
-func (self *MetaDataNodeState) GenerateBlockId() string {
+func (self *MetaDataNodeState) GenerateBlockId() BlockID {
 	u4, err := uuid.NewV4()
 	if err != nil {
 		log.Fatalln(err)
 	}
-	return u4.String()
+	return BlockID(u4.String())
 }
 
-func (self *MetaDataNodeState) GetBlob(blobID string) []string {
+func (self *MetaDataNodeState) GetBlob(blobID string) []BlockID {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
-	blocks, err := self.store.Get(blobID)
+	names, err := self.store.Get(blobID)
 	if err != nil {
 		log.Fatalln(err)
 	}
+
+	// Is this really necessary?
+	var blocks []BlockID
+	for _, n := range names {
+		blocks = append(blocks, BlockID(n))
+	}
+
 	return blocks
 }
 
-func (self *MetaDataNodeState) HasBlocks(nodeID string, blockIDs []string) {
+func (self *MetaDataNodeState) HasBlocks(nodeID NodeID, blocks []BlockID) {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
-	for _, blockID := range blockIDs {
+	for _, blockID := range blocks {
 		if self.blocks[blockID] == nil {
-			self.blocks[blockID] = map[string]bool{}
+			self.blocks[blockID] = map[NodeID]bool{}
 		}
 		if self.dataNodesBlocks[nodeID] == nil {
-			self.dataNodesBlocks[nodeID] = map[string]bool{}
+			self.dataNodesBlocks[nodeID] = map[BlockID]bool{}
 		}
 		self.blocks[blockID][nodeID] = true
 		self.dataNodesBlocks[nodeID][blockID] = true
 	}
 }
 
-func (self *MetaDataNodeState) DoesntHaveBlocks(nodeID string, blockIDs []string) {
+func (self *MetaDataNodeState) DoesntHaveBlocks(nodeID NodeID, blockIDs []BlockID) {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
@@ -94,7 +152,7 @@ func (self *MetaDataNodeState) DoesntHaveBlocks(nodeID string, blockIDs []string
 	}
 }
 
-func (self *MetaDataNodeState) GetBlock(blockID string) []string {
+func (self *MetaDataNodeState) GetBlock(blockID BlockID) []string {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
@@ -106,12 +164,12 @@ func (self *MetaDataNodeState) GetBlock(blockID string) []string {
 	return addrs
 }
 
-func (self *MetaDataNodeState) RegisterDataNode(addr string) string {
+func (self *MetaDataNodeState) RegisterDataNode(addr string) NodeID {
 	u4, err := uuid.NewV4()
 	if err != nil {
 		log.Fatal(err)
 	}
-	nodeID := u4.String()
+	nodeID := NodeID(u4.String())
 
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
@@ -121,7 +179,7 @@ func (self *MetaDataNodeState) RegisterDataNode(addr string) string {
 	return nodeID
 }
 
-func (self *MetaDataNodeState) HeartbeatFrom(nodeID string, utilization int) bool {
+func (self *MetaDataNodeState) HeartbeatFrom(nodeID NodeID, utilization int) bool {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
@@ -130,7 +188,7 @@ func (self *MetaDataNodeState) HeartbeatFrom(nodeID string, utilization int) boo
 	return len(self.dataNodes[nodeID]) > 0
 }
 
-type ByRandom []string
+type ByRandom []NodeID
 func (s ByRandom) Len() int {
     return len(s)
 }
@@ -141,7 +199,7 @@ func (s ByRandom) Less(i, j int) bool {
     return rand.Intn(2) == 0 // 0 or 1
 }
 
-type ByUtilization []string
+type ByUtilization []NodeID
 func (s ByUtilization) Len() int {
     return len(s)
 }
@@ -152,19 +210,26 @@ func (s ByUtilization) Less(i, j int) bool {
     return State.dataNodesUtilization[s[i]] < State.dataNodesUtilization[s[j]]
 }
 
-func (self *MetaDataNodeState) GetDataNodes() []string {
-	self.mutex.Lock()
-	defer self.mutex.Unlock()
 
-	var nodes []string
+// This is not concurrency safe
+func (self *MetaDataNodeState) NodesByUtilization() []NodeID {
+	var nodes []NodeID
 	for nodeID, _ := range self.dataNodes {
 		nodes = append(nodes, nodeID)
 	}
 
 	sort.Sort(ByRandom(nodes))
 	sort.Stable(ByUtilization(nodes))
+
+	return nodes
+}
+
+func (self *MetaDataNodeState) GetDataNodes() []string {
+	self.mutex.Lock()
+	self.mutex.Unlock()
+	nodes := self.NodesByUtilization()
 	
-	var forwardTo []string
+	var forwardTo []NodeID
 	if len(nodes) < self.ReplicationFactor {
 		forwardTo = nodes
 	} else {
@@ -180,11 +245,11 @@ func (self *MetaDataNodeState) GetDataNodes() []string {
 	return addrs
 }
 
-func (self *MetaDataNodeState) CommitBlob(name string, blocks []string) {
+func (self *MetaDataNodeState) CommitBlob(name string, blocks []BlockID) {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 	for _, b := range blocks {
-		self.store.Append(name, b)
+		self.store.Append(name, string(b))
 	}
 }
 
@@ -205,6 +270,32 @@ func monitor() {
 				}
 				delete(State.dataNodesBlocks, id)
 			}
+		}
+
+		for blockID, nodes := range State.blocks {
+			if State.replicationIntents.InProgress(blockID) {
+				continue
+			}
+			if len(nodes) >= State.ReplicationFactor {
+				continue
+			}
+			log.Println("Block '" + blockID + "' is under-replicated!")
+			var forwardTo []NodeID
+			nodesByUtilization := State.NodesByUtilization()
+			for _, nodeID := range nodesByUtilization {
+				if len(forwardTo) + len(nodes) >= State.ReplicationFactor {
+					break
+				}
+				if ! nodes[nodeID] {
+					forwardTo = append(forwardTo, nodeID)
+				}
+			}
+			log.Printf("Replicating to: %v", forwardTo)
+			var availableFrom []NodeID
+			for n, _ := range nodes {
+				availableFrom = append(availableFrom, n)
+			}
+			State.replicationIntents.Add(blockID, availableFrom, forwardTo)
 		}
 		State.mutex.Unlock()
 

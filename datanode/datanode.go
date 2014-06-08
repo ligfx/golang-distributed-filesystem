@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/michaelmaltese/golang-distributed-filesystem/comm"
+	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
 	"github.com/michaelmaltese/golang-distributed-filesystem/util"
 )
 
@@ -30,19 +30,19 @@ const (
 type ClientSession struct {
 	state ClientSessionState
 	connection net.Conn
-	blockId string
+	blockId BlockID
 	forwardTo []string
 	size int64
 }
 
 const MaxSize = int64(128 * 1024 * 1024)
 
-func (self *ClientSession) GetBlock(blockID *string, size *int64) error {
+func (self *ClientSession) GetBlock(blockID *BlockID, size *int64) error {
 	if self.state != Start {
 		return errors.New("Not allowed in current session state")
 	}
 
-	fileInfo, err := os.Stat(path.Join(DataDir, *blockID))
+	fileInfo, err := os.Stat(path.Join(DataDir, string(*blockID)))
 	if err != nil {
 		log.Fatal("Stat error: ", err)
 	}
@@ -56,7 +56,7 @@ func (self *ClientSession) GetBlock(blockID *string, size *int64) error {
 	return nil
 }
 
-func (self *ClientSession) ForwardBlock(blockMsg *comm.ForwardBlock, _ *int) error {
+func (self *ClientSession) ForwardBlock(blockMsg *ForwardBlock, _ *int) error {
 	if self.state != Start {
 		return errors.New("Not allowed in current session state")
 	}
@@ -65,7 +65,7 @@ func (self *ClientSession) ForwardBlock(blockMsg *comm.ForwardBlock, _ *int) err
 		return errors.New("Bad size")
 	}
 
-	self.blockId = blockMsg.BlockId
+	self.blockId = blockMsg.BlockID
 	self.forwardTo = blockMsg.Nodes
 	self.size = blockMsg.Size
 	self.state = Receiving
@@ -78,7 +78,7 @@ func (self *ClientSession) Confirm(_ *int, _ *int) error {
 		return errors.New("Not allowed in current session state")
 	}
 
-	State.HaveBlocks([]string{self.blockId})
+	State.HaveBlocks([]BlockID{self.blockId})
 
 	self.blockId = ""
 	self.size = -1
@@ -86,7 +86,7 @@ func (self *ClientSession) Confirm(_ *int, _ *int) error {
 	return nil	
 }
 
-func sendBlock(blockID string, peers []string) {
+func sendBlock(blockID BlockID, peers []string) {
 	var peerConn net.Conn
 	var forwardTo []string
 	var err error
@@ -114,7 +114,7 @@ func sendBlock(blockID string, peers []string) {
 	peer := rpc.NewClientWithCodec(peerCodec)
 	defer peer.Close()
 
-	fileName := path.Join(DataDir, blockID)
+	fileName := path.Join(DataDir, string(blockID))
 	fileInfo, err := os.Stat(fileName)
 	if err != nil {
 		log.Fatal("Stat error: ", err)
@@ -126,7 +126,7 @@ func sendBlock(blockID string, peers []string) {
 	}
 
 	err = peer.Call("ClientSession.ForwardBlock",
-		&comm.ForwardBlock{blockID, forwardTo, size},
+		&ForwardBlock{blockID, forwardTo, size},
 		nil)
 	if err != nil {
 		log.Fatal("ForwardBlock error: ", err)
@@ -165,7 +165,7 @@ func handleRequest(c net.Conn) {
 		case Receiving:
 			var err error
 
-			file, err := os.Create(path.Join(DataDir, session.blockId))
+			file, err := os.Create(path.Join(DataDir, string(session.blockId)))
 			if err != nil {
 				log.Fatal("Create file '" + session.blockId + "' error:", err)
 			}
@@ -177,15 +177,15 @@ func handleRequest(c net.Conn) {
 
 			// Pipeline!
 			if len(session.forwardTo) > 0 {
-				go sendBlock(session.blockId, session.forwardTo)
+				State.forwardingBlocks <- ForwardBlock{session.blockId, session.forwardTo, -1}
 			}
 
-			log.Println("Received block '" + session.blockId + "' from " + c.RemoteAddr().String())
+			log.Println("Received block '" + string(session.blockId) + "' from " + c.RemoteAddr().String())
 			
 			session.state = ReadyToConfirm
 
 		case Sending:
-			file, err := os.Open(path.Join(DataDir, session.blockId))
+			file, err := os.Open(path.Join(DataDir, string(session.blockId)))
 			if err != nil {
 				log.Fatal("Open file '" + session.blockId + "' error:", err)
 			}
@@ -210,6 +210,10 @@ var (
 	State DataNodeState
 )
 
+func init() {
+	State.forwardingBlocks = make(chan ForwardBlock)
+}
+
 func DataNode() {
 	port := flag.String("port", "0", "port to listen on (0=random)")
 	flag.StringVar(&DataDir, "dataDir", "_blocks", "directory to store blocks")
@@ -233,6 +237,13 @@ func DataNode() {
 
 	// Heartbeat and registration
 	go heartbeat()
+
+	go func() {
+		for {
+			f := <- State.forwardingBlocks
+			sendBlock(f.BlockID, f.Nodes)
+		}
+	}()
 
 	// Server
 	for {

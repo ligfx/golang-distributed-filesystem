@@ -3,14 +3,14 @@ package metadatanode
 import (
 	"log"
 	"errors"
-	"github.com/michaelmaltese/golang-distributed-filesystem/comm"
+	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
 )
 
 type ClientSession struct {
 	state SessionState
 	server *MetaDataNodeState
 	blob_id string
-	blocks []string
+	blocks []BlockID
 	remoteAddr string
 }
 func (self *ClientSession) CreateBlob(_ *int, ret *string) error {
@@ -19,12 +19,12 @@ func (self *ClientSession) CreateBlob(_ *int, ret *string) error {
 	}
 
 	self.blob_id = self.server.GenerateBlobId()
-	self.blocks = []string{}
+	self.blocks = []BlockID{}
 	*ret = self.blob_id
 	self.state = Creating
 	return nil
 }
-func (self *ClientSession) Append(_ *int, ret *comm.ForwardBlock) error {
+func (self *ClientSession) Append(_ *int, ret *ForwardBlock) error {
 	if self.state != Creating {
 		return errors.New("Not allowed in current session state")
 	}
@@ -32,7 +32,7 @@ func (self *ClientSession) Append(_ *int, ret *comm.ForwardBlock) error {
 	blockId := self.server.GenerateBlockId()
 	self.blocks = append(self.blocks, blockId)
 
-	*ret = comm.ForwardBlock{blockId, self.server.GetDataNodes(), 128 * 1024 * 1024}
+	*ret = ForwardBlock{blockId, self.server.GetDataNodes(), 128 * 1024 * 1024}
 	return nil
 }
 
@@ -49,7 +49,7 @@ func (self *ClientSession) Commit(_ *int, _ *int) error {
 	return nil
 }
 
-func (self *ClientSession) GetBlob(blobId *string, blocks *[]string) error {
+func (self *ClientSession) GetBlob(blobId *string, blocks *[]BlockID) error {
 	if self.state != Start {
 		return errors.New("Not allowed in current session state")
 	}
@@ -58,7 +58,7 @@ func (self *ClientSession) GetBlob(blobId *string, blocks *[]string) error {
 	return nil
 }
 
-func (self *ClientSession) GetBlock(blockId *string, nodes *[]string) error {
+func (self *ClientSession) GetBlock(blockId *BlockID, nodes *[]string) error {
 	if self.state != Start {
 		return errors.New("Not allowed in current session state")
 	}

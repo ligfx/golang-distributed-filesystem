@@ -11,47 +11,48 @@ import (
 	"sync"
 	"time"
 
-	"github.com/michaelmaltese/golang-distributed-filesystem/comm"
+	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
 	"github.com/michaelmaltese/golang-distributed-filesystem/util"
 )
 
 type DataNodeState struct {
 	mutex sync.Mutex
-	newBlocks []string
-	deadBlocks []string
-	NodeID string
+	newBlocks []BlockID
+	deadBlocks []BlockID
+	forwardingBlocks chan ForwardBlock
+	NodeID NodeID
 	heartbeatInterval time.Duration
 }
 
-func (self *DataNodeState) HaveBlocks(blockIDs []string) {
+func (self *DataNodeState) HaveBlocks(blockIDs []BlockID) {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
 	self.newBlocks = append(self.newBlocks, blockIDs...)
 }
 
-func (self *DataNodeState) DontHaveBlocks(blockIDs []string) {
+func (self *DataNodeState) DontHaveBlocks(blockIDs []BlockID) {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
 	self.deadBlocks = append(self.deadBlocks, blockIDs...)
 }
 
-func (self *DataNodeState) DrainNewBlocks() []string {
+func (self *DataNodeState) DrainNewBlocks() []BlockID {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
 	newBlocks := self.newBlocks
-	self.newBlocks = []string{}
+	self.newBlocks = []BlockID{}
 	return newBlocks
 }
 
-func (self *DataNodeState) DrainDeadBlocks() []string {
+func (self *DataNodeState) DrainDeadBlocks() []BlockID {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
 	deadBlocks := self.deadBlocks
-	self.deadBlocks = []string{}
+	self.deadBlocks = []BlockID{}
 	return deadBlocks
 }
 
@@ -98,12 +99,14 @@ func tick() {
 
 	newBlocks := State.DrainNewBlocks()
 	deadBlocks := State.DrainDeadBlocks()
-	var resp comm.HeartbeatResponse
+	var resp HeartbeatResponse
 	err = client.Call("PeerSession.Heartbeat",
-		comm.HeartbeatMsg{State.NodeID, spaceUsed, newBlocks, deadBlocks},
+		HeartbeatMsg{State.NodeID, spaceUsed, newBlocks, deadBlocks},
 		&resp)
 	if err != nil {
-		log.Fatalln("Heartbeat error:", err)
+		log.Println("Heartbeat error:", err)
+		State.HaveBlocks(newBlocks)
+		return
 	}
 	if resp.NeedToRegister {
 		log.Println("Re-registering with leader...")
@@ -113,12 +116,18 @@ func tick() {
 	}
 	for _, blockID := range resp.InvalidateBlocks {
 		log.Println("Removing block '" + blockID + "'")
-		err = os.Remove(path.Join(DataDir, blockID))
+		err = os.Remove(path.Join(DataDir, string(blockID)))
 		if err != nil {
 			log.Fatalln("Error removing '" + blockID + "':", err)
 		}
 	}
 	State.DontHaveBlocks(resp.InvalidateBlocks)
+	go func() {
+		for _, fwd := range resp.ToReplicate {
+			log.Println("Will replicate '" + string(fwd.BlockID) + "' to", fwd.Nodes)
+			State.forwardingBlocks <- fwd
+		}
+	}()
 }
 
 func register(client *rpc.Client) {
@@ -134,9 +143,9 @@ func register(client *rpc.Client) {
 		if err != nil {
 			log.Fatal("Reading directory '" + DataDir + "': ", err)
 		}
-		var names []string
+		var names []BlockID
 		for _, f := range files {
-			names = append(names, f.Name())
+			names = append(names, BlockID(f.Name()))
 		}
 		State.HaveBlocks(names)
 	}()

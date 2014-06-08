@@ -12,7 +12,7 @@ import (
 	"net/rpc/jsonrpc"
 	"strings"
 
-	"github.com/michaelmaltese/golang-distributed-filesystem/comm"
+	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
 	"github.com/michaelmaltese/golang-distributed-filesystem/util"
 )
 
@@ -59,7 +59,7 @@ func Upload() {
 
 	bytesLeft := localFileSize
 	for bytesLeft > 0 {
-		var nodesMsg comm.ForwardBlock
+		var nodesMsg ForwardBlock
 		err = client.Call("ClientSession.Append", nil, &nodesMsg)
 		if err != nil {
 			log.Fatal("Append error:", err)
@@ -100,7 +100,7 @@ func Upload() {
 		}
 
 		err = dataNodeClient.Call("ClientSession.ForwardBlock",
-			&comm.ForwardBlock{nodesMsg.BlockId, forwardTo, size},
+			&ForwardBlock{nodesMsg.BlockID, forwardTo, size},
 			nil)
 		if err != nil {
 			log.Fatal("ForwardBlock error: ", err)

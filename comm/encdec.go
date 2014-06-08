@@ -1,20 +1,24 @@
 // Network protocol and other communications issues.
 package comm
 
+type BlockID string
+type NodeID string
+
 type ForwardBlock struct {
-	BlockId string
+	BlockID BlockID
 	Nodes []string
 	Size int64
 }
 
 type HeartbeatMsg struct {
-	NodeID string
+	NodeID NodeID
 	SpaceUsed int
-	NewBlocks []string
-	DeadBlocks []string
+	NewBlocks []BlockID
+	DeadBlocks []BlockID
 }
 
 type HeartbeatResponse struct {
 	NeedToRegister bool
-	InvalidateBlocks []string
+	InvalidateBlocks []BlockID
+	ToReplicate []ForwardBlock
 }
