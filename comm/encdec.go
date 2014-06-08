@@ -10,3 +10,8 @@ type HaveBlock struct {
 	BlockId string
 	NodeId string
 }
+
+type HeartbeatMsg struct {
+	NodeID string
+	SpaceUsed int64
+}

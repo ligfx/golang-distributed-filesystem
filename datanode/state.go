@@ -69,8 +69,16 @@ func tick() {
 	}
 
 	log.Println("Heartbeat...")
+	
+	// Could be cached
+	files, err := ioutil.ReadDir(DataDir)
+	if err != nil {
+		log.Fatal("Reading directory '" + DataDir + "': ", err)
+	}
+	spaceUsed := int64(len(files))
+
 	recognized := true
-	err = client.Call("PeerSession.Heartbeat", State.NodeID, &recognized)
+	err = client.Call("PeerSession.Heartbeat", comm.HeartbeatMsg{State.NodeID, spaceUsed}, &recognized)
 	if err != nil {
 		log.Fatalln("Heartbeat error:", err)
 	}

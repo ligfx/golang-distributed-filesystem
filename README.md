@@ -13,9 +13,11 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [x] MetaDataNode can restart and DataNode will re-register (heartbeats)
 - [x] Tell DataNodes to re-register if MetaDataNode doesn't recognize them
 - [x] Drop DataNodes when they go down (heartbeats)
-- [ ] MetaDataNode obeys replication factor instead of replicating to all DataNodes
-- [ ] If a client tries to upload a block and every DataNode in its list is down, it needs to get more from the MetaDataNode.
+- [x] DataNode sends size of data directory (heartbeat)
+- [ ] MetaDataNode obeys replication factor, balances based on current reported space
+- [ ] MetaDataNode balances blocks as it runs
 - [ ] MetaDataNode moves blocks when a fresh DataNode comes online
+- [ ] If a client tries to upload a block and every DataNode in its list is down, it needs to get more from the MetaDataNode.
 - [ ] Support multiple MetaDataNodes with a DHT (and consensus algorithm?)
 
 Uses [gpm](https://github.com/pote/gpm) for dependency management. 

@@ -12,13 +12,13 @@ type PeerSession struct {
 	server *MetaDataNodeState
 	remoteAddr string
 }
-func (self *PeerSession) Heartbeat (nodeID *string, okay *bool) error {
+func (self *PeerSession) Heartbeat (msg *comm.HeartbeatMsg, okay *bool) error {
 	if self.state != Start {
 		return errors.New("Not allowed in current session state")
 	}
-	*okay = self.server.HeartbeatFrom(*nodeID)
+	*okay = self.server.HeartbeatFrom(msg.NodeID)
 	if *okay {
-		log.Println("Heartbeat from:", *nodeID)
+		log.Println("Heartbeat from '" + msg.NodeID + "', space used", msg.SpaceUsed)
 	}
 	return nil
 }
