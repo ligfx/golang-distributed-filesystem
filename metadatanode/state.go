@@ -137,15 +137,23 @@ func (self *MetaDataNodeState) GetDataNodes() []string {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
-	var addrs []string
-	for _, addr := range self.dataNodes {
-		addrs = append(addrs, addr)
+	var nodes []string
+	for nodeID, _ := range self.dataNodes {
+		nodes = append(nodes, nodeID)
 	}
 
-	sort.Sort(ByRandom(addrs))
-	sort.Stable(sort.Reverse(ByUtilization(addrs)))
+	sort.Sort(ByRandom(nodes))
+	sort.Stable(ByUtilization(nodes))
+	
+	forwardTo := nodes[0:self.ReplicationFactor]
 
-	return addrs[0:self.ReplicationFactor]
+	var addrs []string
+	for _, nodeID := range forwardTo {
+		self.dataNodesUtilization[nodeID] += 1
+		addrs = append(addrs, self.dataNodes[nodeID])
+	}
+
+	return addrs
 }
 
 func (self *MetaDataNodeState) CommitBlob(name string, blocks []string) {

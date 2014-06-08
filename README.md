@@ -16,7 +16,7 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [x] DataNode sends size of data directory (heartbeat)
 - [x] MetaDataNode obeys replication factor
 - [x] MetaDataNode balances based on current reported space
-- [ ] MetaDataNode balances based on what it's sending too
+- [x] MetaDataNode balances based on expected new blocks
 - [ ] MetaDataNode balances blocks as it runs
 - [ ] MetaDataNode moves blocks when a fresh DataNode comes online
 - [ ] If a client tries to upload a block and every DataNode in its list is down, it needs to get more from the MetaDataNode.
