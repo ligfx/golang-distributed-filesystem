@@ -145,7 +145,12 @@ func (self *MetaDataNodeState) GetDataNodes() []string {
 	sort.Sort(ByRandom(nodes))
 	sort.Stable(ByUtilization(nodes))
 	
-	forwardTo := nodes[0:self.ReplicationFactor]
+	var forwardTo []string
+	if len(nodes) < self.ReplicationFactor {
+		forwardTo = nodes
+	} else {
+		forwardTo = nodes[0:self.ReplicationFactor]
+	}
 
 	var addrs []string
 	for _, nodeID := range forwardTo {

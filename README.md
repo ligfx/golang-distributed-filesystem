@@ -17,7 +17,15 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [x] MetaDataNode obeys replication factor
 - [x] MetaDataNode balances based on current reported space
 - [x] MetaDataNode balances based on expected new blocks
+- [x] MetaDataNode handles not enough DataNodes for replication
+- [x] Have MetaDataNode manage the block size stuff (in HDFS, clients can change this per-file)
+- [ ] Drop over-replicated blocks when a DataNode comes up
+- [ ] Re-replicate blocks when a DataNode disappears
 - [ ] Balance new DataNodes (need to keep a plan of what we're doing / what blocks to expect where?)
 - [ ] MetaDataNode balances blocks as it runs
 - [ ] If a client tries to upload a block and every DataNode in its list is down, it needs to get more from the MetaDataNode.
+- [ ] Keep track of blocks as we're creating a file, if the client bails before committing then delete the blocks.
+- [ ] Don't force a long-running connection for creating a file, give the client a lease and let them re-connect
+- [ ] Record hash digest of blocks, remove them if becomes incorrect, reject send if hash is wrong
+- [ ] Resiliency to weird protocol stuff (run the RPC loop manually?)
 - [ ] Support multiple MetaDataNodes with a DHT (and consensus algorithm?)

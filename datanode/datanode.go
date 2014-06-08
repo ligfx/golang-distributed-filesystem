@@ -19,12 +19,9 @@ import (
 	"github.com/michaelmaltese/golang-distributed-filesystem/util"
 )
 
-
-
 type ClientSessionState int
 const (
 	Start ClientSessionState = iota
-	SizeNegotiation
 	Done
 	Receiving
 	Sending
@@ -59,29 +56,20 @@ func (self *ClientSession) GetBlock(blockID *string, size *int64) error {
 	return nil
 }
 
-func (self *ClientSession) ForwardBlock(blockMsg *comm.ForwardBlock, maxSize *int64) error {
+func (self *ClientSession) ForwardBlock(blockMsg *comm.ForwardBlock, _ *int) error {
 	if self.state != Start {
 		return errors.New("Not allowed in current session state")
 	}
 
-	self.blockId = blockMsg.BlockId
-	*maxSize = MaxSize
-	self.state = SizeNegotiation
-	self.forwardTo = blockMsg.Nodes
-	return nil
-}
-
-func (self *ClientSession) Size(size *int64, _ *int) error {
-	if self.state != SizeNegotiation {
-		return errors.New("Not allowed in current session state")
-	}
-
-	if *size > MaxSize || *size <= 0 {
+	if blockMsg.Size <= 0 {
 		return errors.New("Bad size")
 	}
 
+	self.blockId = blockMsg.BlockId
+	self.forwardTo = blockMsg.Nodes
+	self.size = blockMsg.Size
 	self.state = Receiving
-	self.size = *size
+
 	return nil
 }
 
@@ -137,17 +125,11 @@ func sendBlock(blockID string, peers []string) {
 		log.Fatalln("Open file '" + blockID + "' error:", err)
 	}
 
-	// Ignore maxsize because we assume it's the same thing
-	// Could be wrong. Maybe datanodes shouldn't worry about that.
 	err = peer.Call("ClientSession.ForwardBlock",
-		&comm.ForwardBlock{blockID, forwardTo},
+		&comm.ForwardBlock{blockID, forwardTo, size},
 		nil)
 	if err != nil {
 		log.Fatal("ForwardBlock error: ", err)
-	}
-	err = peer.Call("ClientSession.Size", &size, nil)
-	if err != nil {
-		log.Fatal("Size error: ", err)
 	}
 
 	_, err = io.CopyN(peerConn, file, size)
@@ -232,7 +214,7 @@ func DataNode() {
 	port := flag.String("port", "0", "port to listen on (0=random)")
 	flag.StringVar(&DataDir, "dataDir", "_blocks", "directory to store blocks")
 	flag.BoolVar(&Debug, "debug", false, "Show RPC conversations")
-	flag.DurationVar(&State.heartbeatInterval, "heartbeatInterval", 10 * time.Second, "")
+	flag.DurationVar(&State.heartbeatInterval, "heartbeatInterval", 3 * time.Second, "")
 	flag.Parse()
 
 	addr, socket := util.Listen(*port)

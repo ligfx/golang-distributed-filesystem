@@ -64,6 +64,7 @@ func Upload() {
 		if err != nil {
 			log.Fatal("Append error:", err)
 		}
+		blockSize := nodesMsg.Size
 
 		var dataNode net.Conn
 		var forwardTo []string
@@ -89,27 +90,20 @@ func Upload() {
 		}
 		dataNodeClient := rpc.NewClientWithCodec(dataNodeCodec)
 
-		var maxSize int64
-		err = dataNodeClient.Call("ClientSession.ForwardBlock",
-			&comm.ForwardBlock{nodesMsg.BlockId, forwardTo},
-			&maxSize)
-		if err != nil {
-			log.Fatal("ForwardBlock error: ", err)
-		}
-
 		var size int64
-		if maxSize > bytesLeft {
+		if blockSize > bytesLeft {
 			size = bytesLeft
 			bytesLeft = 0
 		} else {
-			size = maxSize
-			bytesLeft = bytesLeft - maxSize
+			size = blockSize
+			bytesLeft = bytesLeft - blockSize
 		}
 
-		err = dataNodeClient.Call("ClientSession.Size",
-			&size, nil)
+		err = dataNodeClient.Call("ClientSession.ForwardBlock",
+			&comm.ForwardBlock{nodesMsg.BlockId, forwardTo, size},
+			nil)
 		if err != nil {
-			log.Fatal("Size error: ", err)
+			log.Fatal("ForwardBlock error: ", err)
 		}
 
 		file, err := os.Open(*localFileName)

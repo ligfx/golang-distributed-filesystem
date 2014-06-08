@@ -32,7 +32,7 @@ func (self *ClientSession) Append(_ *int, ret *comm.ForwardBlock) error {
 	blockId := self.server.GenerateBlockId()
 	self.blocks = append(self.blocks, blockId)
 
-	*ret = comm.ForwardBlock{blockId, self.server.GetDataNodes()}
+	*ret = comm.ForwardBlock{blockId, self.server.GetDataNodes(), 128 * 1024 * 1024}
 	return nil
 }
 

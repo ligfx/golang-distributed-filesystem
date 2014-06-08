@@ -4,6 +4,7 @@ package comm
 type ForwardBlock struct {
 	BlockId string
 	Nodes []string
+	Size int64
 }
 
 type HaveBlock struct {
