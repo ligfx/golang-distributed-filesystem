@@ -8,10 +8,10 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [x] MetaDataNode/DataNode handle downloads
 - [x] DataNode dynamically registers with MetaDataNode
 - [x] DataNode tells MetaDataNode its blocks on startup
+- [x] MetaDataNode persists file->blocklist map
 - [ ] DataNode persists ID between sessions
 - [ ] DataNode imprints on MetaDataNode and won't connect to others
 - [ ] DataNode pipelines uploads to other DataNodes
-- [ ] MetaDataNode persists file->blocklist map
 - [ ] MetaDataNode can restart and DataNode will re-register (heartbeats)
 - [ ] MetaDataNode will drop DataNodes when they go down (heartbeats?)
 - [ ] MetaDataNode obeys replication factor instead of replicating to all DataNodes

@@ -9,15 +9,20 @@ import (
 
 type MetaDataNodeState struct {
 	mutex sync.Mutex
+	store *DB
 	dataNodes map[string]string
-	blobs map[string][]string
 	blocks map[string][]string
 }
 
 func NewMetaDataNodeState() *MetaDataNodeState {
 	var self MetaDataNodeState
+	db, err := OpenDB("metadata.db")
+	log.Println("Persistent storage at", "metadata.db")
+	if err != nil {
+		log.Fatalln("Metadata store error:", err)
+	}
+	self.store = db
 	self.dataNodes = make(map[string]string)
-	self.blobs = make(map[string][]string)
 	self.blocks = make(map[string][]string)
 	return &self
 }
@@ -33,17 +38,20 @@ func (self *MetaDataNodeState) GenerateBlobId() string {
 func (self *MetaDataNodeState) GenerateBlockId() string {
 	u4, err := uuid.NewV4()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalln(err)
 	}
 	return u4.String()
 }
 
-func (self *MetaDataNodeState) GetBlob(blob_id string) []string {
+func (self *MetaDataNodeState) GetBlob(blobID string) []string {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
-	log.Println(self.blobs[blob_id])
-	return self.blobs[blob_id]
+	blocks, err := self.store.Get(blobID)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return blocks
 }
 
 func (self *MetaDataNodeState) HasBlock(addr string, blockId string) {
@@ -93,5 +101,7 @@ func (self *MetaDataNodeState) GetDataNodes() []string {
 func (self *MetaDataNodeState) CommitBlob(name string, blocks []string) {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
-	self.blobs[name] = blocks
+	for _, b := range blocks {
+		self.store.Append(name, b)
+	}
 }
