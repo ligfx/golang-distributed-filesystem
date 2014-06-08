@@ -4,10 +4,12 @@ import (
 	"log"
 	"math/rand"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/nu7hatch/gouuid"
+	"github.com/dotcloud/docker/pkg/namesgenerator"
 
 	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
 )
@@ -158,7 +160,7 @@ func (self *DeletionIntents) InProgress(block BlockID) bool {
 }
 
 type MetaDataNodeState struct {
-	mutex sync.Mutex
+	mutex sync.RWMutex
 	store *DB
 	dataNodes map[NodeID]string
 	dataNodesLastSeen map[NodeID]time.Time
@@ -214,13 +216,14 @@ func (self *MetaDataNodeState) GenerateBlock(blob string) ForwardBlock {
 		addrs = append(addrs, self.dataNodes[nodeID])
 	}
 
+	// Lock?
 	self.replicationIntents.Add(block, nil, forwardTo)
 	return ForwardBlock{block, addrs, 128 * 1024 * 1024}
 }
 
 func (self *MetaDataNodeState) GetBlob(blobID string) []BlockID {
-	self.mutex.Lock()
-	defer self.mutex.Unlock()
+	self.mutex.RLock()
+	defer self.mutex.RUnlock()
 
 	names, err := self.store.Get(blobID)
 	if err != nil {
@@ -269,8 +272,8 @@ func (self *MetaDataNodeState) DoesntHaveBlocks(nodeID NodeID, blockIDs []BlockI
 }
 
 func (self *MetaDataNodeState) GetBlock(blockID BlockID) []string {
-	self.mutex.Lock()
-	defer self.mutex.Unlock()
+	self.mutex.RLock()
+	defer self.mutex.RUnlock()
 
 	var addrs []string
 	for nodeID, _ := range self.blocks[blockID] {
@@ -281,17 +284,14 @@ func (self *MetaDataNodeState) GetBlock(blockID BlockID) []string {
 }
 
 func (self *MetaDataNodeState) RegisterDataNode(addr string, blocks []BlockID) NodeID {
-	u4, err := uuid.NewV4()
-	if err != nil {
-		log.Fatal(err)
-	}
-	nodeID := NodeID(u4.String())
+	name := strings.Replace(namesgenerator.GetRandomName(0), "_", "-", -1)
+	nodeID := NodeID(name)
 	self.HasBlocks(nodeID, blocks)
 
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 	self.dataNodes[nodeID] = addr
-	self.dataNodesUtilization[nodeID] = 0
+	self.dataNodesUtilization[nodeID] = len(blocks)
 	self.dataNodesLastSeen[nodeID] = time.Now()
 
 	return nodeID
@@ -301,9 +301,12 @@ func (self *MetaDataNodeState) HeartbeatFrom(nodeID NodeID, utilization int) boo
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
-	self.dataNodesLastSeen[nodeID] = time.Now()
-	self.dataNodesUtilization[nodeID] = utilization
-	return len(self.dataNodes[nodeID]) > 0
+	if len(self.dataNodes[nodeID]) > 0 {
+		self.dataNodesLastSeen[nodeID] = time.Now()
+		self.dataNodesUtilization[nodeID] = utilization
+		return true
+	}
+	return false
 }
 
 type ByRandom []NodeID
@@ -325,11 +328,12 @@ func (s ByUtilization) Swap(i, j int) {
     s[i], s[j] = s[j], s[i]
 }
 func (s ByUtilization) Less(i, j int) bool {
-	iu := State.dataNodesUtilization[s[i]] + State.replicationIntents.Count(s[i]) - State.deletionIntents.Count(s[i])
-	ju := State.dataNodesUtilization[s[j]] + State.replicationIntents.Count(s[j]) - State.deletionIntents.Count(s[j])
-    return iu < ju
+    return State.Utilization(s[i]) < State.Utilization(s[j])
 }
 
+func (self *MetaDataNodeState) Utilization(n NodeID) int {
+	return State.dataNodesUtilization[n] + State.replicationIntents.Count(n) - State.deletionIntents.Count(n)
+}
 
 // This is not concurrency safe
 func (self *MetaDataNodeState) LeastUsedNodes() []NodeID {
@@ -370,7 +374,7 @@ func monitor() {
 		// This sucks. Probably could do a separate lock for DataNodes and file stuff
 		State.mutex.Lock()
 		for id, lastSeen := range State.dataNodesLastSeen {
-			if time.Since(lastSeen) > 20 * time.Second {
+			if time.Since(lastSeen) > 10 * time.Second {
 				log.Println("Forgetting absent node:", id)
 				delete(State.dataNodesLastSeen, id)
 				delete(State.dataNodes, id)
@@ -385,6 +389,7 @@ func monitor() {
 		for blockID, nodes := range State.blocks {
 			switch {
 			default:
+				continue
 
 			case State.replicationIntents.InProgress(blockID):
 				continue
@@ -427,8 +432,80 @@ func monitor() {
 				State.replicationIntents.Add(blockID, availableFrom, forwardTo)
 			}
 		}
+
+		if len(State.dataNodes) != 0 {
+			totalUtilization := 0
+			for _, utilization := range State.dataNodesUtilization {
+				totalUtilization += utilization
+			}
+			avgUtilization := totalUtilization / len(State.dataNodes)
+
+			var lessThanAverage []NodeID
+			var moreThanAverage []NodeID
+			for node, utilization := range State.dataNodesUtilization {
+				switch {
+				case utilization < avgUtilization:
+					lessThanAverage = append(lessThanAverage, node)
+				case utilization > avgUtilization:
+					moreThanAverage = append(moreThanAverage, node)
+				}
+			}
+
+			moveIntents := map[NodeID]int{}
+			for len(lessThanAverage) != 0 && len(moreThanAverage) != 0 {
+				sort.Sort(ByRandom(lessThanAverage))
+				sort.Stable(ByUtilization(lessThanAverage))
+				sort.Sort(ByRandom(moreThanAverage))
+				sort.Stable(sort.Reverse(ByUtilization(moreThanAverage)))
+
+				Nodes:
+				for _, lessNode := range lessThanAverage {
+					Blocks:
+					for block, _ := range State.dataNodesBlocks[moreThanAverage[0]] {
+						for existingBlock, _ := range State.dataNodesBlocks[lessNode] {
+							if block == existingBlock {
+								continue Blocks
+							}
+						}
+
+						switch {
+						case State.replicationIntents.InProgress(block):
+							continue Blocks
+
+						case State.deletionIntents.InProgress(block):
+							continue Blocks
+
+						default:
+							var nodes []NodeID
+							for n, _ := range State.blocks[block] {
+								nodes = append(nodes, n)
+							}
+							log.Println("Move a block from", moreThanAverage[0], "to", lessNode)
+							State.replicationIntents.Add(block, nodes, []NodeID{lessNode})
+							if State.Utilization(lessThanAverage[0]) >= avgUtilization {
+								lessThanAverage = lessThanAverage[1:]
+							}
+							break Nodes
+						}
+					}
+				}
+
+				// Prevent infinite loop
+				moveIntents[moreThanAverage[0]]++
+				State.dataNodesUtilization[moreThanAverage[0]]--
+				if State.Utilization(moreThanAverage[0]) <= avgUtilization {
+					moreThanAverage = moreThanAverage[1:]
+				}
+			}
+
+			// So I don't have to write another sorter
+			for node, offset := range moveIntents {
+				State.dataNodesUtilization[node] += offset
+			}
+		}
+
 		State.mutex.Unlock()
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
 }
