@@ -2,6 +2,8 @@ package metadatanode
 
 import (
 	"log"
+	"math/rand"
+	"sort"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ type MetaDataNodeState struct {
 	dataNodesLastSeen map[string]time.Time
 	blocks map[string]map[string]bool
 	dataNodesBlocks map[string][]string
+	ReplicationFactor int
 }
 
 func NewMetaDataNodeState() *MetaDataNodeState {
@@ -104,8 +107,18 @@ func (self *MetaDataNodeState) HeartbeatFrom(nodeID string) bool {
 	return len(self.dataNodes[nodeID]) > 0
 }
 
+type ByRandom []string
+func (s ByRandom) Len() int {
+    return len(s)
+}
+func (s ByRandom) Swap(i, j int) {
+    s[i], s[j] = s[j], s[i]
+}
+func (s ByRandom) Less(i, j int) bool {
+    return rand.Intn(2) == 0 // 0 or 1
+}
+
 func (self *MetaDataNodeState) GetDataNodes() []string {
-	// Is this lock necessary?
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
@@ -113,7 +126,10 @@ func (self *MetaDataNodeState) GetDataNodes() []string {
 	for _, addr := range self.dataNodes {
 		addrs = append(addrs, addr)
 	}
-	return addrs
+
+	sort.Sort(ByRandom(addrs))
+
+	return addrs[0:self.ReplicationFactor]
 }
 
 func (self *MetaDataNodeState) CommitBlob(name string, blocks []string) {

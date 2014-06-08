@@ -14,7 +14,8 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [x] Tell DataNodes to re-register if MetaDataNode doesn't recognize them
 - [x] Drop DataNodes when they go down (heartbeats)
 - [x] DataNode sends size of data directory (heartbeat)
-- [ ] MetaDataNode obeys replication factor, balances based on current reported space
+- [x] MetaDataNode obeys replication factor
+- [ ] MetaDataNode balances based on current reported space (keeps track of what its sending where too?)
 - [ ] MetaDataNode balances blocks as it runs
 - [ ] MetaDataNode moves blocks when a fresh DataNode comes online
 - [ ] If a client tries to upload a block and every DataNode in its list is down, it needs to get more from the MetaDataNode.

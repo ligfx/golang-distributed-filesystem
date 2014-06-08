@@ -30,19 +30,21 @@ func rpcServer(c net.Conn, debug bool, obj interface{}) {
 var State *MetaDataNodeState
 
 func MetadataNode() {
+	State = NewMetaDataNodeState()
 	var (
 		clientPort = flag.String("clientport", "5050", "port to listen on")
 		peerPort = flag.String("peerport", "5051", "port to listen on")
 		debug = flag.Bool("debug", false, "Show RPC conversations")
 	)
+	flag.IntVar(&State.ReplicationFactor, "replicationFactor", 2, "")
 	flag.Parse()
 
 	clientAddr, clientChan := util.Listen(*clientPort)
 	peerAddr, peerChan := util.Listen(*peerPort)
 	log.Println("Accepting client connections on", clientAddr)
 	log.Println("Accepting peer connections on", peerAddr)
+	log.Println("Replication factor of", State.ReplicationFactor)
 
-	State = NewMetaDataNodeState()
 	go monitor()
 
 	for {
