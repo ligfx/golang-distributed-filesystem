@@ -31,6 +31,7 @@ type ClientSession struct {
 	state ClientSessionState
 	connection net.Conn
 	blockId string
+	forwardTo []string
 	size int64
 }
 
@@ -49,6 +50,7 @@ func (self *ClientSession) GetBlock(blockID *string, size *int64) error {
 	*size = self.size
 
 	self.blockId = *blockID
+	self.forwardTo = nil
 	self.state = Sending
 
 	return nil
@@ -62,6 +64,7 @@ func (self *ClientSession) ForwardBlock(blockMsg *comm.ForwardBlock, maxSize *in
 	self.blockId = blockMsg.BlockId
 	*maxSize = MaxSize
 	self.state = SizeNegotiation
+	self.forwardTo = blockMsg.Nodes
 	return nil
 }
 
@@ -109,9 +112,61 @@ func (self *ClientSession) Confirm(_ *int, _ *int) error {
 	return nil	
 }
 
+func sendBlock(blockID string, peers []string) {
+
+	fileName := path.Join(DataDir, blockID)
+	fileInfo, err := os.Stat(fileName)
+	if err != nil {
+		log.Fatal("Stat error: ", err)
+	}
+	size := fileInfo.Size()
+	file, err := os.Open(fileName)
+	if err != nil {
+		log.Fatalln("Open file '" + blockID + "' error:", err)
+	}
+
+	nextNode := peers[0]
+	peerConn, err := net.Dial("tcp", nextNode)
+	if err != nil {
+		log.Fatalln("Dial error:", err)
+	}
+	peerCodec := jsonrpc.NewClientCodec(peerConn)
+	if Debug {
+		peerCodec = util.LoggingClientCodec(
+			peerConn.RemoteAddr().String(),
+			peerCodec)
+	}
+	peer := rpc.NewClientWithCodec(peerCodec)
+	defer peer.Close()
+
+	// Ignore maxsize because we assume it's the same thing
+	// Could be wrong. Maybe datanodes shouldn't worry about that.
+	err = peer.Call("ClientSession.ForwardBlock",
+		&comm.ForwardBlock{blockID, peers[1:]},
+		nil)
+	if err != nil {
+		log.Fatal("ForwardBlock error: ", err)
+	}
+	err = peer.Call("ClientSession.Size", &size, nil)
+	if err != nil {
+		log.Fatal("Size error: ", err)
+	}
+
+	_, err = io.CopyN(peerConn, file, size)
+	file.Close()
+	if err != nil {
+		log.Fatal("Copying error: ", err)
+	}
+	
+	err = peer.Call("ClientSession.Confirm", nil, nil)
+	if err != nil {
+		log.Fatal("Confirm error: ", err)
+	}
+}
+
 func handleRequest(c net.Conn) {
 	server := rpc.NewServer()
-	session := &ClientSession{Start, c, "", -1}
+	session := &ClientSession{Start, c, "", nil, -1}
 	server.Register(session)
 	codec := jsonrpc.NewServerCodec(c)
 	if Debug {
@@ -128,6 +183,8 @@ func handleRequest(c net.Conn) {
 			return
 
 		case Receiving:
+			var err error
+
 			file, err := os.Create(path.Join(DataDir, session.blockId))
 			if err != nil {
 				log.Fatal("Create file '" + session.blockId + "' error:", err)
@@ -136,6 +193,11 @@ func handleRequest(c net.Conn) {
 			file.Close()
 			if err != nil {
 				log.Fatal("Copying error: ", err)
+			}
+
+			// Pipeline!
+			if len(session.forwardTo) > 0 {
+				go sendBlock(session.blockId, session.forwardTo)
 			}
 
 			log.Println("Received block '" + session.blockId + "' from " + c.RemoteAddr().String())

@@ -18,9 +18,6 @@ import (
 
 func Upload() {
 	var err error
-
-	fmt.Println(strings.Join(os.Args, " "))
-
 	var (
 		localFileName = flag.String("file", "", "File to upload")
 		debug = flag.Bool("debug", false, "Show RPC conversation")
@@ -85,7 +82,7 @@ func Upload() {
 
 		var maxSize int64
 		err = dataNodeClient.Call("ClientSession.ForwardBlock",
-			&comm.ForwardBlock{nodesMsg.BlockId, []string{}},
+			&comm.ForwardBlock{nodesMsg.BlockId, nodesMsg.Nodes[1:]},
 			&maxSize)
 		if err != nil {
 			log.Fatal("ForwardBlock error: ", err)
