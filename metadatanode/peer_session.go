@@ -12,6 +12,16 @@ type PeerSession struct {
 	server *MetaDataNodeState
 	remoteAddr string
 }
+func (self *PeerSession) Heartbeat (nodeID *string, _ *int) error {
+	if self.state != Start {
+		return errors.New("Not allowed in current session state")
+	}
+
+	// Saw nodeID
+
+	return nil
+}
+
 func (self *PeerSession) Register (port *string, nodeId *string) error {
 	if self.state != Start {
 		return errors.New("Not allowed in current session state")

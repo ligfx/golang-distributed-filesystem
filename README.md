@@ -10,10 +10,10 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [x] DataNode tells MetaDataNode its blocks on startup
 - [x] MetaDataNode persists file->blocklist map
 - [x] DataNode pipelines uploads to other DataNodes
-- [ ] DataNode imprints on MetaDataNode and won't connect to others
-- [ ] MetaDataNode can restart and DataNode will re-register (heartbeats)
-- [ ] MetaDataNode will drop DataNodes when they go down (heartbeats?)
+- [x] MetaDataNode can restart and DataNode will re-register (heartbeats)
+- [ ] Drop DataNodes when they go down (heartbeats)
 - [ ] MetaDataNode obeys replication factor instead of replicating to all DataNodes
+- [ ] If a client tries to upload a block and every DataNode in its list is down, it needs to get more from the MetaDataNode.
 - [ ] MetaDataNode moves blocks when a fresh DataNode comes online
 - [ ] Support multiple MetaDataNodes with a DHT (and consensus algorithm?)
 

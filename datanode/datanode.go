@@ -6,17 +6,19 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"time"
 
 	"github.com/michaelmaltese/golang-distributed-filesystem/comm"
 	"github.com/michaelmaltese/golang-distributed-filesystem/util"
 )
+
+
 
 type ClientSessionState int
 const (
@@ -87,24 +89,7 @@ func (self *ClientSession) Confirm(_ *int, _ *int) error {
 		return errors.New("Not allowed in current session state")
 	}
 
-	metaDataNodeConn, err := net.Dial("tcp", "[::1]:5051")
-	if err != nil {
-		log.Fatalln("Dial error:", err)
-	}
-
-	metaDataNodeCodec := jsonrpc.NewClientCodec(metaDataNodeConn)
-	if Debug {
-		metaDataNodeCodec = util.LoggingClientCodec(
-			metaDataNodeConn.RemoteAddr().String(),
-			metaDataNodeCodec)
-	}
-	metaDataNode := rpc.NewClientWithCodec(metaDataNodeCodec)
-	defer metaDataNode.Close()
-
-	err = metaDataNode.Call("PeerSession.HaveBlock", &comm.HaveBlock{self.blockId, NodeID}, nil)
-	if err != nil {
-		log.Fatalln("HaveBlock error:", err)
-	}
+	State.HaveBlock(self.blockId)
 
 	self.blockId = ""
 	self.size = -1
@@ -226,14 +211,15 @@ func handleRequest(c net.Conn) {
 var (
 	DataDir string
 	Debug bool
-	NodeID string
 	Port string
+	State DataNodeState
 )
 
 func DataNode() {
 	port := flag.String("port", "0", "port to listen on (0=random)")
 	flag.StringVar(&DataDir, "dataDir", "_blocks", "directory to store blocks")
 	flag.BoolVar(&Debug, "debug", false, "Show RPC conversations")
+	flag.DurationVar(&State.heartbeatInterval, "heartbeatInterval", 1000 * time.Millisecond, "")
 	flag.Parse()
 
 	addr, socket := util.Listen(*port)
@@ -243,28 +229,6 @@ func DataNode() {
 	if err != nil {
 		log.Fatalln("SplitHostPort error:", err)
 	}
-	
-	// Register
-	conn, err := net.Dial("tcp", "[::1]:5051")
-	if err != nil {
-		log.Fatal("Dial error:", err)
-	}
-	defer conn.Close()
-
-	codec := jsonrpc.NewClientCodec(conn)
-	if Debug {
-		codec = util.LoggingClientCodec(
-			conn.RemoteAddr().String(),
-			codec)
-	}
-	client := rpc.NewClientWithCodec(codec)
-
-	err = client.Call("PeerSession.Register", Port, &NodeID)
-	if err != nil {
-		log.Fatal("Register error:", err)
-	}
-
-	log.Println("Registered with ID '" + NodeID + "'")
 
 	err = os.MkdirAll(DataDir, 0777)
 	if err != nil {
@@ -272,23 +236,10 @@ func DataNode() {
 	}
 	log.Print("Block storage in directory '" + DataDir + "'")
 
-	// Send blocks
-	go func() {
-		defer client.Close()
+	// Heartbeat and registration
+	go heartbeat()
 
-		files, err := ioutil.ReadDir(DataDir)
-		if err != nil {
-			log.Fatal("Reading directory '" + DataDir + "': ", err)
-		}
-
-		for _, f := range files {
-			err = client.Call("PeerSession.HaveBlock", &comm.HaveBlock{f.Name(), NodeID}, nil)
-			if err != nil {
-				log.Fatalln("HaveBlock error:", err)
-			}
-		}
-	}()
-
+	// Server
 	for {
 		conn := <- socket
 		go handleRequest(conn)
