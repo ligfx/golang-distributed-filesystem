@@ -26,13 +26,12 @@ func (self *PeerSession) Heartbeat (msg *HeartbeatMsg, resp *HeartbeatResponse) 
 	self.server.HasBlocks(msg.NodeID, msg.NewBlocks)
 	for _, blockID := range msg.NewBlocks {
 		log.Println("Block '" + string(blockID) + "' registered to " + string(msg.NodeID))
-		// Pathological MDN
-		// resp.InvalidateBlocks = append(resp.InvalidateBlocks, blockID)
 	}
 	self.server.DoesntHaveBlocks(msg.NodeID, msg.DeadBlocks)
 	for _, blockID := range msg.DeadBlocks {
 		log.Println("Block '" + string(blockID) + "' de-registered from " + string(msg.NodeID))
 	}
+	resp.InvalidateBlocks = self.server.deletionIntents.Get(msg.NodeID)
 	for block, nodes := range self.server.replicationIntents.Get(msg.NodeID) {
 		var addrs []string
 		for _, n := range nodes {

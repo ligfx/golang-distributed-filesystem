@@ -118,7 +118,7 @@ func tick() {
 		log.Println("Removing block '" + blockID + "'")
 		err = os.Remove(path.Join(DataDir, string(blockID)))
 		if err != nil {
-			log.Fatalln("Error removing '" + blockID + "':", err)
+			log.Println("Error removing '" + blockID + "':", err)
 		}
 	}
 	State.DontHaveBlocks(resp.InvalidateBlocks)

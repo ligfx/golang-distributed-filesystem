@@ -55,6 +55,54 @@ func (self *ReplicationIntents) InProgress(block BlockID) bool {
 	return false
 }
 
+type deletionIntent struct {
+	startedAt time.Time
+	sentCommand bool
+	block BlockID
+	node NodeID
+}
+
+type DeletionIntents struct {
+	intents []*deletionIntent
+}
+
+func (self *DeletionIntents) Add(block BlockID, from []NodeID) {
+	for _, node := range from {
+		if self.InProgress(block) {
+			log.Fatalln("Already deleting block '" + string(block) + "' from '" + string(node) + "'")
+		}
+		self.intents = append(self.intents, &deletionIntent{time.Now(), false, block, node})
+	}
+}
+
+func (self *DeletionIntents) Get(node NodeID) []BlockID {
+	var deletions []BlockID
+	for _, intent := range self.intents {
+		if intent.sentCommand {
+			continue
+		}
+		if intent.node == node {
+			log.Printf("%+v", intent)
+			deletions = append(deletions, intent.block)
+			intent.sentCommand = true
+			intent.startedAt = time.Now()
+		}
+	}
+	return deletions
+}
+
+func (self *DeletionIntents) InProgress(block BlockID) bool {
+	for i, intent := range self.intents {
+		if intent.block == block {
+			if time.Since(intent.startedAt) < 20 * time.Second {
+				return true
+			}
+			self.intents = append(self.intents[:i], self.intents[i+1:]...)
+		}
+	}
+	return false
+}
+
 type MetaDataNodeState struct {
 	mutex sync.Mutex
 	store *DB
@@ -64,6 +112,7 @@ type MetaDataNodeState struct {
 	blocks map[BlockID]map[NodeID]bool
 	dataNodesBlocks map[NodeID]map[BlockID]bool
 	replicationIntents ReplicationIntents
+	deletionIntents DeletionIntents
 	ReplicationFactor int
 }
 
@@ -273,29 +322,48 @@ func monitor() {
 		}
 
 		for blockID, nodes := range State.blocks {
-			if State.replicationIntents.InProgress(blockID) {
-				continue
-			}
-			if len(nodes) >= State.ReplicationFactor {
-				continue
-			}
-			log.Println("Block '" + blockID + "' is under-replicated!")
-			var forwardTo []NodeID
 			nodesByUtilization := State.NodesByUtilization()
-			for _, nodeID := range nodesByUtilization {
-				if len(forwardTo) + len(nodes) >= State.ReplicationFactor {
-					break
+			switch {
+			default:
+
+			case State.replicationIntents.InProgress(blockID):
+				continue
+
+			case State.deletionIntents.InProgress(blockID):
+				continue
+
+			case len(nodes) > State.ReplicationFactor:
+				log.Println("Block '" + blockID + "' is over-replicated")
+				var deleteFrom []NodeID
+				for _, nodeID := range nodesByUtilization {
+					if len(nodes) - len(deleteFrom) <= State.ReplicationFactor {
+						break
+					}
+					if nodes[nodeID] {
+						deleteFrom = append(deleteFrom, nodeID)
+					}
 				}
-				if ! nodes[nodeID] {
-					forwardTo = append(forwardTo, nodeID)
+				log.Printf("Deleting from: %v", deleteFrom)
+				State.deletionIntents.Add(blockID, deleteFrom)
+
+			case len(nodes) < State.ReplicationFactor:
+				log.Println("Block '" + blockID + "' is under-replicated!")
+				var forwardTo []NodeID
+				for _, nodeID := range nodesByUtilization {
+					if len(forwardTo) + len(nodes) >= State.ReplicationFactor {
+						break
+					}
+					if ! nodes[nodeID] {
+						forwardTo = append(forwardTo, nodeID)
+					}
 				}
+				log.Printf("Replicating to: %v", forwardTo)
+				var availableFrom []NodeID
+				for n, _ := range nodes {
+					availableFrom = append(availableFrom, n)
+				}
+				State.replicationIntents.Add(blockID, availableFrom, forwardTo)
 			}
-			log.Printf("Replicating to: %v", forwardTo)
-			var availableFrom []NodeID
-			for n, _ := range nodes {
-				availableFrom = append(availableFrom, n)
-			}
-			State.replicationIntents.Add(blockID, availableFrom, forwardTo)
 		}
 		State.mutex.Unlock()
 
