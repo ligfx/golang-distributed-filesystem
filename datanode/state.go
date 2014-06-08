@@ -44,15 +44,6 @@ func heartbeat() {
 }
 
 func tick() {
-	if len(State.NodeID) == 0 {
-		register()
-	}
-	if len(State.NodeID) == 0 {
-		// Still offline :/
-		return
-	}
-
-	log.Println("Heartbeat...")
 	conn, err := net.Dial("tcp", "[::1]:5051")
 	if err != nil {
 		// MetaDataNode offline
@@ -69,9 +60,23 @@ func tick() {
 	client := rpc.NewClientWithCodec(codec)
 	defer client.Close()
 
-	err = client.Call("PeerSession.Heartbeat", State.NodeID, nil)
+	if len(State.NodeID) == 0 {
+		register(client)
+	}
+	if len(State.NodeID) == 0 {
+		// Still offline :/
+		return
+	}
+
+	log.Println("Heartbeat...")
+	recognized := true
+	err = client.Call("PeerSession.Heartbeat", State.NodeID, &recognized)
 	if err != nil {
 		log.Fatalln("Heartbeat error:", err)
+	}
+	if !recognized {
+		log.Println("Re-registering with leader...")
+		register(client)
 	}
 
 	staleBlocks := State.DrainStaleBlocks()
@@ -83,32 +88,15 @@ func tick() {
 	}
 }
 
-func register() {
-	log.Println("Registering with leader...")
-	conn, err := net.Dial("tcp", "[::1]:5051")
+func register(client *rpc.Client) {
+	err := client.Call("PeerSession.Register", Port, &State.NodeID)
 	if err != nil {
-		log.Println("Couldn't connect to leader")
-		// MetaDataNode offline
-		return
-	}
-	defer conn.Close()
-
-	codec := jsonrpc.NewClientCodec(conn)
-	if Debug {
-		codec = util.LoggingClientCodec(
-			conn.RemoteAddr().String(),
-			codec)
-	}
-	client := rpc.NewClientWithCodec(codec)
-
-	err = client.Call("PeerSession.Register", Port, &State.NodeID)
-	if err != nil {
-		log.Fatal("Register error:", err)
+		log.Fatal("Registration error:", err)
 	}
 	log.Println("Registered with ID:", State.NodeID)
 
-	log.Println("Re-reading blocklist")
 	go func() {
+		log.Println("Re-reading blocklist")
 		files, err := ioutil.ReadDir(DataDir)
 		if err != nil {
 			log.Fatal("Reading directory '" + DataDir + "': ", err)

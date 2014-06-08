@@ -86,6 +86,13 @@ func (self *MetaDataNodeState) RegisterDataNode(addr string) string {
 	return nodeId
 }
 
+func (self *MetaDataNodeState) HeartbeatFrom(nodeID string) bool {
+	self.mutex.Lock()
+	defer self.mutex.Unlock()
+
+	return len(self.dataNodes[nodeID]) > 0
+}
+
 func (self *MetaDataNodeState) GetDataNodes() []string {
 	// Is this lock necessary?
 	self.mutex.Lock()
