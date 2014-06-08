@@ -78,7 +78,7 @@ func (self *ClientSession) Confirm(_ *int, _ *int) error {
 		return errors.New("Not allowed in current session state")
 	}
 
-	State.HaveBlock(self.blockId)
+	State.HaveBlocks([]string{self.blockId})
 
 	self.blockId = ""
 	self.size = -1

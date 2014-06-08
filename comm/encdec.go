@@ -12,3 +12,8 @@ type HeartbeatMsg struct {
 	SpaceUsed int
 	BlockIDs []string
 }
+
+type HeartbeatResponse struct {
+	NeedToRegister bool
+	InvalidateBlocks []string
+}

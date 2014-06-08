@@ -12,16 +12,19 @@ type PeerSession struct {
 	server *MetaDataNodeState
 	remoteAddr string
 }
-func (self *PeerSession) Heartbeat (msg *comm.HeartbeatMsg, okay *bool) error {
+func (self *PeerSession) Heartbeat (msg *comm.HeartbeatMsg, resp *comm.HeartbeatResponse) error {
 	if self.state != Start {
 		return errors.New("Not allowed in current session state")
 	}
-	*okay = self.server.HeartbeatFrom(msg.NodeID, msg.SpaceUsed)
-	if *okay {
+	resp.NeedToRegister = ! self.server.HeartbeatFrom(msg.NodeID, msg.SpaceUsed)
+	if ! resp.NeedToRegister {
 		log.Println("Heartbeat from '" + msg.NodeID + "', space used", msg.SpaceUsed)
 		for _, blockID := range msg.BlockIDs {
 			self.server.HasBlock(msg.NodeID, blockID)
 			log.Println("Block '" + blockID + "' registered to " + msg.NodeID)
+
+			// Pathological MDN
+			// resp.InvalidateBlocks = append(resp.InvalidateBlocks, blockID)
 		}
 	}
 	return nil

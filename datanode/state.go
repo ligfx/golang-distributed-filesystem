@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"os"
+	"path"
 	"sync"
 	"time"
 
@@ -20,11 +22,11 @@ type DataNodeState struct {
 	heartbeatInterval time.Duration
 }
 
-func (self *DataNodeState) HaveBlock(blockID string) {
+func (self *DataNodeState) HaveBlocks(blockIDs []string) {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
-	self.staleBlocks = append(self.staleBlocks, blockID)
+	self.staleBlocks = append(self.staleBlocks, blockIDs...)
 }
 
 func (self *DataNodeState) DrainStaleBlocks() []string {
@@ -78,16 +80,25 @@ func tick() {
 	spaceUsed := len(files)
 
 	staleBlocks := State.DrainStaleBlocks()
-	recognized := true
+	var resp comm.HeartbeatResponse
 	err = client.Call("PeerSession.Heartbeat",
 		comm.HeartbeatMsg{State.NodeID, spaceUsed, staleBlocks},
-		&recognized)
+		&resp)
 	if err != nil {
 		log.Fatalln("Heartbeat error:", err)
 	}
-	if !recognized {
+	if resp.NeedToRegister {
 		log.Println("Re-registering with leader...")
+		State.HaveBlocks(staleBlocks) // Try again next heartbeat
 		register(client)
+		return
+	}
+	for _, blockID := range resp.InvalidateBlocks {
+		log.Println("Removing block '" + blockID + "'")
+		err = os.Remove(path.Join(DataDir, blockID))
+		if err != nil {
+			log.Fatalln("Error removing '" + blockID + "':", err)
+		}
 	}
 }
 
@@ -104,8 +115,10 @@ func register(client *rpc.Client) {
 		if err != nil {
 			log.Fatal("Reading directory '" + DataDir + "': ", err)
 		}
+		var names []string
 		for _, f := range files {
-			State.HaveBlock(f.Name())
+			names = append(names, f.Name())
 		}
+		State.HaveBlocks(names)
 	}()
 }
