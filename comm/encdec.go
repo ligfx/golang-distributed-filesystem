@@ -7,12 +7,8 @@ type ForwardBlock struct {
 	Size int64
 }
 
-type HaveBlock struct {
-	BlockId string
-	NodeId string
-}
-
 type HeartbeatMsg struct {
 	NodeID string
 	SpaceUsed int
+	BlockIDs []string
 }

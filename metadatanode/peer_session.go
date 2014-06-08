@@ -19,6 +19,10 @@ func (self *PeerSession) Heartbeat (msg *comm.HeartbeatMsg, okay *bool) error {
 	*okay = self.server.HeartbeatFrom(msg.NodeID, msg.SpaceUsed)
 	if *okay {
 		log.Println("Heartbeat from '" + msg.NodeID + "', space used", msg.SpaceUsed)
+		for _, blockID := range msg.BlockIDs {
+			self.server.HasBlock(msg.NodeID, blockID)
+			log.Println("Block '" + blockID + "' registered to " + msg.NodeID)
+		}
 	}
 	return nil
 }
@@ -36,13 +40,3 @@ func (self *PeerSession) Register (port *string, nodeId *string) error {
 	log.Println("DataNode '" + *nodeId + "' registered at " + addr)
 	return nil
 }
-
-func (self *PeerSession) HaveBlock (msg *comm.HaveBlock, _ *int) error {
-	if self.state != Start {
-		return errors.New("Not allowed in current session state")
-	}
-	self.server.HasBlock(msg.NodeId, msg.BlockId)
-	log.Println("Block '" + msg.BlockId + "' registered to " + msg.NodeId)
-	return nil
-}
-

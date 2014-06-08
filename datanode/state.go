@@ -77,22 +77,17 @@ func tick() {
 	}
 	spaceUsed := len(files)
 
+	staleBlocks := State.DrainStaleBlocks()
 	recognized := true
-	err = client.Call("PeerSession.Heartbeat", comm.HeartbeatMsg{State.NodeID, spaceUsed}, &recognized)
+	err = client.Call("PeerSession.Heartbeat",
+		comm.HeartbeatMsg{State.NodeID, spaceUsed, staleBlocks},
+		&recognized)
 	if err != nil {
 		log.Fatalln("Heartbeat error:", err)
 	}
 	if !recognized {
 		log.Println("Re-registering with leader...")
 		register(client)
-	}
-
-	staleBlocks := State.DrainStaleBlocks()
-	for _, blockID := range staleBlocks {
-		err = client.Call("PeerSession.HaveBlock", &comm.HaveBlock{blockID, State.NodeID}, nil)
-		if err != nil {
-			log.Fatalln("HaveBlock error:", err)
-		}
 	}
 }
 
