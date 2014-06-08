@@ -13,5 +13,5 @@ type HaveBlock struct {
 
 type HeartbeatMsg struct {
 	NodeID string
-	SpaceUsed int64
+	SpaceUsed int
 }

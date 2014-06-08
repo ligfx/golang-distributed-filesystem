@@ -15,6 +15,7 @@ type MetaDataNodeState struct {
 	store *DB
 	dataNodes map[string]string
 	dataNodesLastSeen map[string]time.Time
+	dataNodesUtilization map[string]int
 	blocks map[string]map[string]bool
 	dataNodesBlocks map[string][]string
 	ReplicationFactor int
@@ -30,6 +31,7 @@ func NewMetaDataNodeState() *MetaDataNodeState {
 	self.store = db
 	self.dataNodesLastSeen = map[string]time.Time{}
 	self.dataNodes = map[string]string{}
+	self.dataNodesUtilization = map[string]int{}
 	self.blocks = map[string]map[string]bool{}
 	self.dataNodesBlocks = map[string][]string{}
 	return &self
@@ -90,20 +92,22 @@ func (self *MetaDataNodeState) RegisterDataNode(addr string) string {
 	if err != nil {
 		log.Fatal(err)
 	}
-	nodeId := u4.String()
+	nodeID := u4.String()
 
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
-	self.dataNodes[nodeId] = addr
-	self.dataNodesLastSeen[nodeId] = time.Now()
-	return nodeId
+	self.dataNodes[nodeID] = addr
+	self.dataNodesUtilization[nodeID] = 0
+	self.dataNodesLastSeen[nodeID] = time.Now()
+	return nodeID
 }
 
-func (self *MetaDataNodeState) HeartbeatFrom(nodeID string) bool {
+func (self *MetaDataNodeState) HeartbeatFrom(nodeID string, utilization int) bool {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 
 	self.dataNodesLastSeen[nodeID] = time.Now()
+	self.dataNodesUtilization[nodeID] = utilization
 	return len(self.dataNodes[nodeID]) > 0
 }
 
@@ -118,6 +122,17 @@ func (s ByRandom) Less(i, j int) bool {
     return rand.Intn(2) == 0 // 0 or 1
 }
 
+type ByUtilization []string
+func (s ByUtilization) Len() int {
+    return len(s)
+}
+func (s ByUtilization) Swap(i, j int) {
+    s[i], s[j] = s[j], s[i]
+}
+func (s ByUtilization) Less(i, j int) bool {
+    return State.dataNodesUtilization[s[i]] < State.dataNodesUtilization[s[j]]
+}
+
 func (self *MetaDataNodeState) GetDataNodes() []string {
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
@@ -128,6 +143,7 @@ func (self *MetaDataNodeState) GetDataNodes() []string {
 	}
 
 	sort.Sort(ByRandom(addrs))
+	sort.Stable(sort.Reverse(ByUtilization(addrs)))
 
 	return addrs[0:self.ReplicationFactor]
 }
@@ -147,10 +163,11 @@ func monitor() {
 		// This sucks. Probably could do a separate lock for DataNodes and file stuff
 		State.mutex.Lock()
 		for id, lastSeen := range State.dataNodesLastSeen {
-			if time.Since(lastSeen) > 60 * time.Second {
+			if time.Since(lastSeen) > 20 * time.Second {
 				log.Println("Forgetting absent node:", id)
 				delete(State.dataNodesLastSeen, id)
 				delete(State.dataNodes, id)
+				delete(State.dataNodesUtilization, id)
 				for _, block := range State.dataNodesBlocks[id] {
 					delete(State.blocks[block], id)
 				}
@@ -159,6 +176,6 @@ func monitor() {
 		}
 		State.mutex.Unlock()
 
-		time.Sleep(10 * time.Second)
+		time.Sleep(2 * time.Second)
 	}
 }

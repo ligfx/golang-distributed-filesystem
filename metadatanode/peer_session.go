@@ -16,7 +16,7 @@ func (self *PeerSession) Heartbeat (msg *comm.HeartbeatMsg, okay *bool) error {
 	if self.state != Start {
 		return errors.New("Not allowed in current session state")
 	}
-	*okay = self.server.HeartbeatFrom(msg.NodeID)
+	*okay = self.server.HeartbeatFrom(msg.NodeID, msg.SpaceUsed)
 	if *okay {
 		log.Println("Heartbeat from '" + msg.NodeID + "', space used", msg.SpaceUsed)
 	}
