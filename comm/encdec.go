@@ -10,6 +10,11 @@ type ForwardBlock struct {
 	Size int64
 }
 
+type RegistrationMsg struct {
+	Port string
+	Blocks []BlockID
+}
+
 type HeartbeatMsg struct {
 	NodeID NodeID
 	SpaceUsed int

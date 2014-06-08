@@ -42,7 +42,7 @@ func (self *PeerSession) Heartbeat (msg *HeartbeatMsg, resp *HeartbeatResponse) 
 	return nil
 }
 
-func (self *PeerSession) Register (port *string, nodeId *NodeID) error {
+func (self *PeerSession) Register (req *RegistrationMsg, nodeId *NodeID) error {
 	if self.state != Start {
 		return errors.New("Not allowed in current session state")
 	}
@@ -50,8 +50,8 @@ func (self *PeerSession) Register (port *string, nodeId *NodeID) error {
 	if err != nil {
 		log.Fatalln("SplitHostPort error:", err)
 	}
-	addr := net.JoinHostPort(host, *port)
-	*nodeId = self.server.RegisterDataNode(addr)
-	log.Println("DataNode '" + string(*nodeId) + "' registered at " + addr)
+	addr := net.JoinHostPort(host, req.Port)
+	*nodeId = self.server.RegisterDataNode(addr, req.Blocks)
+	log.Println("DataNode '" + string(*nodeId) + "' with", len(req.Blocks), "blocks registered at", addr)
 	return nil
 }

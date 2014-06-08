@@ -280,18 +280,20 @@ func (self *MetaDataNodeState) GetBlock(blockID BlockID) []string {
 	return addrs
 }
 
-func (self *MetaDataNodeState) RegisterDataNode(addr string) NodeID {
+func (self *MetaDataNodeState) RegisterDataNode(addr string, blocks []BlockID) NodeID {
 	u4, err := uuid.NewV4()
 	if err != nil {
 		log.Fatal(err)
 	}
 	nodeID := NodeID(u4.String())
+	self.HasBlocks(nodeID, blocks)
 
 	self.mutex.Lock()
 	defer self.mutex.Unlock()
 	self.dataNodes[nodeID] = addr
 	self.dataNodesUtilization[nodeID] = 0
 	self.dataNodesLastSeen[nodeID] = time.Now()
+
 	return nodeID
 }
 

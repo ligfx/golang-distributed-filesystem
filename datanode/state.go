@@ -80,15 +80,25 @@ func tick() {
 	client := rpc.NewClientWithCodec(codec)
 	defer client.Close()
 
+	log.Println("Heartbeat...")
 	if len(State.NodeID) == 0 {
-		register(client)
-	}
-	if len(State.NodeID) == 0 {
-		// Still offline :/
+		log.Println("Re-reading blocklist")
+		files, err := ioutil.ReadDir(DataDir)
+		if err != nil {
+			log.Fatal("Reading directory '" + DataDir + "': ", err)
+		}
+		var names []BlockID
+		for _, f := range files {
+			names = append(names, BlockID(f.Name()))
+		}
+		err = client.Call("PeerSession.Register", &RegistrationMsg{Port, names}, &State.NodeID)
+		if err != nil {
+			log.Println("Registration error:", err)
+			return
+		}
+		log.Println("Registered with ID:", State.NodeID)
 		return
 	}
-
-	log.Println("Heartbeat...")
 
 	// Could be cached
 	files, err := ioutil.ReadDir(DataDir)
@@ -100,6 +110,7 @@ func tick() {
 	newBlocks := State.DrainNewBlocks()
 	deadBlocks := State.DrainDeadBlocks()
 	var resp HeartbeatResponse
+
 	err = client.Call("PeerSession.Heartbeat",
 		HeartbeatMsg{State.NodeID, spaceUsed, newBlocks, deadBlocks},
 		&resp)
@@ -110,8 +121,8 @@ func tick() {
 	}
 	if resp.NeedToRegister {
 		log.Println("Re-registering with leader...")
+		State.NodeID = ""
 		State.HaveBlocks(newBlocks) // Try again next heartbeat
-		register(client)
 		return
 	}
 	for _, blockID := range resp.InvalidateBlocks {
@@ -127,26 +138,5 @@ func tick() {
 			log.Println("Will replicate '" + string(fwd.BlockID) + "' to", fwd.Nodes)
 			State.forwardingBlocks <- fwd
 		}
-	}()
-}
-
-func register(client *rpc.Client) {
-	err := client.Call("PeerSession.Register", Port, &State.NodeID)
-	if err != nil {
-		log.Fatalln("Registration error:", err)
-	}
-	log.Println("Registered with ID:", State.NodeID)
-
-	go func() {
-		log.Println("Re-reading blocklist")
-		files, err := ioutil.ReadDir(DataDir)
-		if err != nil {
-			log.Fatal("Reading directory '" + DataDir + "': ", err)
-		}
-		var names []BlockID
-		for _, f := range files {
-			names = append(names, BlockID(f.Name()))
-		}
-		State.HaveBlocks(names)
 	}()
 }
