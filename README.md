@@ -22,12 +22,12 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [x] Re-replicate blocks when a DataNode disappears
 - [x] Drop over-replicated blocks when a DataNode comes up
 - [x] Looking at DataNode utilization should take into account the DeletionIntents and ReplicationIntents
-- [x] Grace period for replicating new
+- [x] Grace period for replicating new blocks
 - [x] MetaDataNode balances blocks as it runs!
-- [ ] Grace period for replicating just-registered blocks
+- [ ] Support multiple MetaDataNodes with a DHT (and consensus algorithm?)
+- [ ] Keep track of MoveIntents (subtract from predicted utilization of node), might fix the volatility when re-balancing
+- [ ] Don't force a long-running connection for creating a file, give the client a lease and let them re-connect
 - [ ] If a client tries to upload a block and every DataNode in its list is down, it needs to get more from the MetaDataNode.
 - [ ] Keep track of blocks as we're creating a file, if the client bails before committing then delete the blocks.
-- [ ] Don't force a long-running connection for creating a file, give the client a lease and let them re-connect
 - [ ] Record hash digest of blocks, remove them if becomes incorrect, reject send if hash is wrong
 - [ ] Resiliency to weird protocol stuff (run the RPC loop manually?)
-- [ ] Support multiple MetaDataNodes with a DHT (and consensus algorithm?)

@@ -1,6 +1,8 @@
 package metadatanode
 
 import (
+	"bytes"
+	"crypto/sha1"
 	"log"
 	"math/rand"
 	"sort"
@@ -194,6 +196,18 @@ func (self *MetaDataNodeState) GenerateBlobId() string {
 	if err != nil {
 		log.Fatal(err)
 	}
+	hash := sha1.Sum([]byte(u4.String()))
+	a := []byte{85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85}
+	b := []byte{170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170}
+	switch {
+	case bytes.Compare(hash[:], a) == -1:
+		log.Println("Blob in first third of circle")
+	case bytes.Compare(hash[:], b) == -1:
+		log.Println("Blob in second third of circle")
+	default:
+		log.Println("Blob in final third of circle")
+	}
+
 	return u4.String()
 }
 
