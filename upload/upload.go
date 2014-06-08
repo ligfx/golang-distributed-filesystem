@@ -65,12 +65,21 @@ func Upload() {
 			log.Fatal("Append error:", err)
 		}
 
-		dataNode, err := net.Dial("tcp", nodesMsg.Nodes[0])
-		if err != nil {
-			log.Fatal("DataNode dial error:", err)
+		var dataNode net.Conn
+		var forwardTo []string
+		// Find a DataNode
+		for i, addr := range nodesMsg.Nodes {
+			dataNode, err = net.Dial("tcp", addr)
+			if err == nil {
+				forwardTo = append(nodesMsg.Nodes[:i], nodesMsg.Nodes[i+1:]...)
+				break
+			}
+			dataNode = nil
+		}
+		if dataNode == nil {
+			log.Fatalln("Couldn't connect to any DataNodes in:", strings.Join(nodesMsg.Nodes, " "))
 		}
 		defer dataNode.Close()
-
 
 		dataNodeCodec := jsonrpc.NewClientCodec(dataNode)
 		if *debug {
@@ -82,7 +91,7 @@ func Upload() {
 
 		var maxSize int64
 		err = dataNodeClient.Call("ClientSession.ForwardBlock",
-			&comm.ForwardBlock{nodesMsg.BlockId, nodesMsg.Nodes[1:]},
+			&comm.ForwardBlock{nodesMsg.BlockId, forwardTo},
 			&maxSize)
 		if err != nil {
 			log.Fatal("ForwardBlock error: ", err)

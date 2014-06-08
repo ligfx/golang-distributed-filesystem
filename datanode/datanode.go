@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"strings"
 	"time"
 
 	"github.com/michaelmaltese/golang-distributed-filesystem/comm"
@@ -98,6 +99,32 @@ func (self *ClientSession) Confirm(_ *int, _ *int) error {
 }
 
 func sendBlock(blockID string, peers []string) {
+	var peerConn net.Conn
+	var forwardTo []string
+	var err error
+	// Find an online peer
+	for i, addr := range peers {
+		peerConn, err = net.Dial("tcp", addr)
+		if err == nil {
+			forwardTo = append(peers[:i], peers[i+1:]...)
+			break
+		}
+	}
+	if peerConn == nil {
+		log.Println("Couldn't forward block",
+			blockID,
+			"to any DataNodes in:",
+			strings.Join(peers, " "))
+		return
+	}
+	peerCodec := jsonrpc.NewClientCodec(peerConn)
+	if Debug {
+		peerCodec = util.LoggingClientCodec(
+			peerConn.RemoteAddr().String(),
+			peerCodec)
+	}
+	peer := rpc.NewClientWithCodec(peerCodec)
+	defer peer.Close()
 
 	fileName := path.Join(DataDir, blockID)
 	fileInfo, err := os.Stat(fileName)
@@ -110,24 +137,10 @@ func sendBlock(blockID string, peers []string) {
 		log.Fatalln("Open file '" + blockID + "' error:", err)
 	}
 
-	nextNode := peers[0]
-	peerConn, err := net.Dial("tcp", nextNode)
-	if err != nil {
-		log.Fatalln("Dial error:", err)
-	}
-	peerCodec := jsonrpc.NewClientCodec(peerConn)
-	if Debug {
-		peerCodec = util.LoggingClientCodec(
-			peerConn.RemoteAddr().String(),
-			peerCodec)
-	}
-	peer := rpc.NewClientWithCodec(peerCodec)
-	defer peer.Close()
-
 	// Ignore maxsize because we assume it's the same thing
 	// Could be wrong. Maybe datanodes shouldn't worry about that.
 	err = peer.Call("ClientSession.ForwardBlock",
-		&comm.ForwardBlock{blockID, peers[1:]},
+		&comm.ForwardBlock{blockID, forwardTo},
 		nil)
 	if err != nil {
 		log.Fatal("ForwardBlock error: ", err)
