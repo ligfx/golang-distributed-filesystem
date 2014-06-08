@@ -27,6 +27,8 @@ func rpcServer(c net.Conn, debug bool, obj interface{}) {
 	server.ServeCodec(codec)
 }
 
+var State *MetaDataNodeState
+
 func MetadataNode() {
 	var (
 		clientPort = flag.String("clientport", "5050", "port to listen on")
@@ -40,19 +42,20 @@ func MetadataNode() {
 	log.Println("Accepting client connections on", clientAddr)
 	log.Println("Accepting peer connections on", peerAddr)
 
-	state := NewMetaDataNodeState()
+	State = NewMetaDataNodeState()
+	go monitor()
 
 	for {
 		select {
 		case client := <- clientChan:
 			go rpcServer(client,
 				*debug,
-				&ClientSession{Start, state, "", nil, client.RemoteAddr().String()})
+				&ClientSession{Start, State, "", nil, client.RemoteAddr().String()})
 
 		case peer := <- peerChan:
 			go rpcServer(peer,
 				*debug,
-				&PeerSession{Start, state, peer.RemoteAddr().String()})
+				&PeerSession{Start, State, peer.RemoteAddr().String()})
 		}
 	}
 }

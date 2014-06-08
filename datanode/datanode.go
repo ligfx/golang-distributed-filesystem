@@ -232,7 +232,7 @@ func DataNode() {
 	port := flag.String("port", "0", "port to listen on (0=random)")
 	flag.StringVar(&DataDir, "dataDir", "_blocks", "directory to store blocks")
 	flag.BoolVar(&Debug, "debug", false, "Show RPC conversations")
-	flag.DurationVar(&State.heartbeatInterval, "heartbeatInterval", 1000 * time.Millisecond, "")
+	flag.DurationVar(&State.heartbeatInterval, "heartbeatInterval", 10 * time.Second, "")
 	flag.Parse()
 
 	addr, socket := util.Listen(*port)

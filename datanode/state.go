@@ -91,7 +91,7 @@ func tick() {
 func register(client *rpc.Client) {
 	err := client.Call("PeerSession.Register", Port, &State.NodeID)
 	if err != nil {
-		log.Fatal("Registration error:", err)
+		log.Fatalln("Registration error:", err)
 	}
 	log.Println("Registered with ID:", State.NodeID)
 
