@@ -4,6 +4,7 @@ package upload
 import (
 	"flag"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"log"
 	"net"
@@ -57,6 +58,12 @@ func Upload() {
 		log.Fatal("CreateBlob error:", err)
 	}
 
+	file, err := os.Open(*localFileName)
+	if err != nil {
+		log.Fatal("Open error: ", err)
+	}
+	defer file.Close()
+
 	bytesLeft := localFileSize
 	for bytesLeft > 0 {
 		var nodesMsg ForwardBlock
@@ -106,15 +113,10 @@ func Upload() {
 			log.Fatal("ForwardBlock error: ", err)
 		}
 
-		file, err := os.Open(*localFileName)
-		if err != nil {
-			log.Fatal("Open error: ", err)
-		}
-		defer file.Close()
+		hash := crc32.NewIEEE()
+		io.CopyN(dataNode, io.TeeReader(file, hash), size)
 
-		io.CopyN(dataNode, file, size)
-
-		err = dataNodeClient.Call("ClientSession.Confirm", nil, nil)
+		err = dataNodeClient.Call("ClientSession.Confirm", hash.Sum32(), nil)
 		if err != nil {
 			log.Fatal("Confirm error: ", err)
 		}

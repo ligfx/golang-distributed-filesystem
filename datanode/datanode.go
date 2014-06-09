@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"log"
 	"os"
@@ -33,9 +34,8 @@ type ClientSession struct {
 	blockId BlockID
 	forwardTo []string
 	size int64
+	hash uint32
 }
-
-const MaxSize = int64(128 * 1024 * 1024)
 
 func (self *ClientSession) GetBlock(blockID *BlockID, size *int64) error {
 	if self.state != Start {
@@ -73,9 +73,27 @@ func (self *ClientSession) ForwardBlock(blockMsg *ForwardBlock, _ *int) error {
 	return nil
 }
 
-func (self *ClientSession) Confirm(_ *int, _ *int) error {
+func (self *ClientSession) Confirm(crc *uint32, _ *int) error {
 	if self.state != ReadyToConfirm {
 		return errors.New("Not allowed in current session state")
+	}
+
+	if *crc != self.hash {
+		os.Remove(path.Join(DataDir, string(self.blockId)))
+		fmt.Println("Hash doesn't match for", self.blockId)
+		return errors.New("Hash doesn't match!")
+	}
+
+	file, err := os.Create(path.Join(DataDir, string(self.blockId) + ".crc32"))
+	if err != nil {
+		log.Fatal("Create file '" + string(self.blockId) + ".cr32' error:", err)
+	}
+	defer file.Close()
+	fmt.Println(crc)
+
+	// Pipeline!
+	if len(self.forwardTo) > 0 {
+		State.forwardingBlocks <- ForwardBlock{self.blockId, self.forwardTo, -1}
 	}
 
 	State.HaveBlocks([]BlockID{self.blockId})
@@ -83,6 +101,7 @@ func (self *ClientSession) Confirm(_ *int, _ *int) error {
 	self.blockId = ""
 	self.size = -1
 	self.state = Done
+	self.hash = 0
 	return nil	
 }
 
@@ -146,7 +165,7 @@ func sendBlock(blockID BlockID, peers []string) {
 
 func handleRequest(c net.Conn) {
 	server := rpc.NewServer()
-	session := &ClientSession{Start, c, "", nil, -1}
+	session := &ClientSession{Start, c, "", nil, -1, 0}
 	server.Register(session)
 	codec := jsonrpc.NewServerCodec(c)
 	if Debug {
@@ -169,16 +188,13 @@ func handleRequest(c net.Conn) {
 			if err != nil {
 				log.Fatal("Create file '" + session.blockId + "' error:", err)
 			}
-			_, err = io.CopyN(file, c, session.size)
+			hash := crc32.NewIEEE()
+			_, err = io.CopyN(file, io.TeeReader(c, hash), session.size)
 			file.Close()
 			if err != nil {
 				log.Fatal("Copying error: ", err)
 			}
-
-			// Pipeline!
-			if len(session.forwardTo) > 0 {
-				State.forwardingBlocks <- ForwardBlock{session.blockId, session.forwardTo, -1}
-			}
+			session.hash = hash.Sum32()
 
 			log.Println("Received block '" + string(session.blockId) + "' from " + c.RemoteAddr().String())
 			
