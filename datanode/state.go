@@ -83,7 +83,7 @@ func tick() {
 	log.Println("Heartbeat...")
 	if len(State.NodeID) == 0 {
 		log.Println("Re-reading blocklist")
-		files, err := ioutil.ReadDir(DataDir)
+		files, err := ioutil.ReadDir(path.Join(DataDir, "blocks"))
 		if err != nil {
 			log.Fatal("Reading directory '" + DataDir + "': ", err)
 		}
@@ -101,9 +101,9 @@ func tick() {
 	}
 
 	// Could be cached
-	files, err := ioutil.ReadDir(DataDir)
+	files, err := ioutil.ReadDir(path.Join(DataDir, "blocks"))
 	if err != nil {
-		log.Fatal("Reading directory '" + DataDir + "': ", err)
+		log.Fatal("Reading directory '" + path.Join(DataDir, "blocks") + "': ", err)
 	}
 	spaceUsed := len(files)
 
@@ -127,7 +127,7 @@ func tick() {
 	}
 	for _, blockID := range resp.InvalidateBlocks {
 		log.Println("Removing block '" + blockID + "'")
-		err = os.Remove(path.Join(DataDir, string(blockID)))
+		err = os.Remove(path.Join(DataDir, "blocks", string(blockID)))
 		if err != nil {
 			log.Println("Error removing '" + blockID + "':", err)
 		}

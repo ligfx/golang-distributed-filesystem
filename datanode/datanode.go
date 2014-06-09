@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"path"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"strconv"
 	"strings"
 	"time"
 
@@ -73,23 +75,27 @@ func (self *ClientSession) ForwardBlock(blockMsg *ForwardBlock, _ *int) error {
 	return nil
 }
 
-func (self *ClientSession) Confirm(crc *uint32, _ *int) error {
+func (self *ClientSession) Confirm(crc *string, _ *int) error {
 	if self.state != ReadyToConfirm {
 		return errors.New("Not allowed in current session state")
 	}
 
-	if *crc != self.hash {
+	hash, err := strconv.ParseInt(*crc, 10, 64)
+	if err != nil {
+		log.Fatal("Error parsing hash")
+	}
+	if uint32(hash) != self.hash {
 		os.Remove(path.Join(DataDir, string(self.blockId)))
 		fmt.Println("Hash doesn't match for", self.blockId)
 		return errors.New("Hash doesn't match!")
 	}
 
-	file, err := os.Create(path.Join(DataDir, string(self.blockId) + ".crc32"))
+	file, err := os.Create(path.Join(DataDir, "meta", string(self.blockId) + ".crc32"))
 	if err != nil {
-		log.Fatal("Create file '" + string(self.blockId) + ".cr32' error:", err)
+		log.Fatal("Create file '" + path.Join(DataDir, "meta", string(self.blockId) + ".crc32") + "' error:", err)
 	}
 	defer file.Close()
-	fmt.Println(crc)
+	fmt.Fprint(file, *crc)
 
 	// Pipeline!
 	if len(self.forwardTo) > 0 {
@@ -133,7 +139,7 @@ func sendBlock(blockID BlockID, peers []string) {
 	peer := rpc.NewClientWithCodec(peerCodec)
 	defer peer.Close()
 
-	fileName := path.Join(DataDir, string(blockID))
+	fileName := path.Join(DataDir, "blocks", string(blockID))
 	fileInfo, err := os.Stat(fileName)
 	if err != nil {
 		log.Fatal("Stat error: ", err)
@@ -157,7 +163,11 @@ func sendBlock(blockID BlockID, peers []string) {
 		log.Fatal("Copying error: ", err)
 	}
 	
-	err = peer.Call("ClientSession.Confirm", nil, nil)
+	hash, err := ioutil.ReadFile(path.Join(DataDir, "meta", string(blockID) + ".crc32"))
+	if err != nil {
+		log.Fatalln("Read file '" + path.Join(DataDir, "meta", string(blockID) + ".crc32") + "' error:", err)
+	}
+	err = peer.Call("ClientSession.Confirm", string(hash), nil)
 	if err != nil {
 		log.Fatal("Confirm error: ", err)
 	}
@@ -184,13 +194,14 @@ func handleRequest(c net.Conn) {
 		case Receiving:
 			var err error
 
-			file, err := os.Create(path.Join(DataDir, string(session.blockId)))
+			file, err := os.Create(path.Join(DataDir, "blocks", string(session.blockId)))
 			if err != nil {
 				log.Fatal("Create file '" + session.blockId + "' error:", err)
 			}
+			defer file.Close()
+
 			hash := crc32.NewIEEE()
 			_, err = io.CopyN(file, io.TeeReader(c, hash), session.size)
-			file.Close()
 			if err != nil {
 				log.Fatal("Copying error: ", err)
 			}
@@ -201,12 +212,11 @@ func handleRequest(c net.Conn) {
 			session.state = ReadyToConfirm
 
 		case Sending:
-			file, err := os.Open(path.Join(DataDir, string(session.blockId)))
+			file, err := os.Open(path.Join(DataDir, "blocks", string(session.blockId)))
 			if err != nil {
 				log.Fatal("Open file '" + session.blockId + "' error:", err)
 			}
 			fmt.Println("Copying")
-			fmt.Fprint(c, "hi there")
 			_, err = io.CopyN(c, file, session.size)
 			file.Close()
 			fmt.Println("Done copying")
@@ -232,7 +242,7 @@ func init() {
 
 func DataNode() {
 	port := flag.String("port", "0", "port to listen on (0=random)")
-	flag.StringVar(&DataDir, "dataDir", "_blocks", "directory to store blocks")
+	flag.StringVar(&DataDir, "dataDir", "_data", "directory to store data")
 	flag.BoolVar(&Debug, "debug", false, "Show RPC conversations")
 	flag.DurationVar(&State.heartbeatInterval, "heartbeatInterval", 3 * time.Second, "")
 	flag.Parse()
@@ -245,11 +255,16 @@ func DataNode() {
 		log.Fatalln("SplitHostPort error:", err)
 	}
 
-	err = os.MkdirAll(DataDir, 0777)
+	err = os.MkdirAll(path.Join(DataDir, "blocks"), 0777)
 	if err != nil {
-		log.Fatal("Making directory '" + DataDir + "': ", err)
+		log.Fatal("Making directory '" + path.Join(DataDir, "blocks") + "': ", err)
 	}
-	log.Print("Block storage in directory '" + DataDir + "'")
+	log.Print("Block storage in directory '" + path.Join(DataDir, "blocks") + "'")
+	err = os.MkdirAll(path.Join(DataDir, "meta"), 0777)
+	if err != nil {
+		log.Fatal("Making directory '" + path.Join(DataDir, "meta") + "': ", err)
+	}
+	log.Print("Meta storage in directory '" + path.Join(DataDir, "meta") + "'")
 
 	// Heartbeat and registration
 	go heartbeat()

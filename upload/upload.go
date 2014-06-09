@@ -116,7 +116,8 @@ func Upload() {
 		hash := crc32.NewIEEE()
 		io.CopyN(dataNode, io.TeeReader(file, hash), size)
 
-		err = dataNodeClient.Call("ClientSession.Confirm", hash.Sum32(), nil)
+		log.Println("Uploading block with checksum", fmt.Sprint(hash.Sum32()))
+		err = dataNodeClient.Call("ClientSession.Confirm", fmt.Sprint(hash.Sum32()), nil)
 		if err != nil {
 			log.Fatal("Confirm error: ", err)
 		}
