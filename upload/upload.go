@@ -106,7 +106,7 @@ func Upload() {
 			bytesLeft = bytesLeft - blockSize
 		}
 
-		err = dataNodeClient.Call("ClientSession.ForwardBlock",
+		err = dataNodeClient.Call("RPC.ForwardBlock",
 			&ForwardBlock{nodesMsg.BlockID, forwardTo, size},
 			nil)
 		if err != nil {
@@ -117,7 +117,7 @@ func Upload() {
 		io.CopyN(dataNode, io.TeeReader(file, hash), size)
 
 		log.Println("Uploading block with checksum", fmt.Sprint(hash.Sum32()))
-		err = dataNodeClient.Call("ClientSession.Confirm", fmt.Sprint(hash.Sum32()), nil)
+		err = dataNodeClient.Call("RPC.Confirm", fmt.Sprint(hash.Sum32()), nil)
 		if err != nil {
 			log.Fatal("Confirm error: ", err)
 		}

@@ -25,9 +25,11 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [x] Grace period for replicating new blocks
 - [x] MetaDataNode balances blocks as it runs!
 - [x] Record hash digest of blocks, reject send if hash is wrong
+- [ ] DataNode needs to keep track of blocks it's receiving / deleting / checking (ReceiveIntent, DeletionIntent, CheckIntent) so that the integrity checker can run only on real blocks
 - [ ] Remove blocks if checksum doesn't match
-- [ ] Support multiple MetaDataNodes with a DHT (and consensus algorithm?)
+- [ ] Support multiple MetaDataNodes somehow (DHT? Raft? Get rid of MetaDataNodes and use Gossip?)
 - [ ] Keep track of MoveIntents (subtract from predicted utilization of node), might fix the volatility when re-balancing
+- [ ] HashiCorp claims heartbeats are inefficient (linear work aafo number of nodes). Use Gossip?
 - [ ] Don't force a long-running connection for creating a file, give the client a lease and let them re-connect
 - [ ] If a client tries to upload a block and every DataNode in its list is down, it needs to get more from the MetaDataNode.
 - [ ] Keep track of blocks as we're creating a file, if the client bails before committing then delete the blocks.
