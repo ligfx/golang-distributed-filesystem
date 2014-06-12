@@ -1,16 +1,10 @@
 package datanode
 
 import (
-	"hash/crc32"
-	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
-	"os"
-	"path"
-	"strconv"
 	"sync"
 	"time"
 
@@ -18,108 +12,14 @@ import (
 	"github.com/michaelmaltese/golang-distributed-filesystem/util"
 )
 
-type DataNodeConfig struct {}
-
-func (self *DataNodeConfig) BlockSize(block BlockID) (int64, error) {
-	fileInfo, err := os.Stat(self.BlockFilename(block))
-	if err != nil {
-		return -1, err
-	}
-	return fileInfo.Size(), nil
-}
-
-func (self *DataNodeConfig) ReadBlock(block BlockID, size int64, w io.Writer) error {
-	file, err := os.Open(self.BlockFilename(block))
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	_, err = io.CopyN(w, file, size)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (self *DataNodeConfig) WriteBlock(block BlockID, size int64, r io.Reader) (uint32, error) {
-	file, err := os.Create(self.BlockFilename(block))
-	if err != nil {
-		return 0, err
-	}
-	defer file.Close()
-
-	hash := crc32.NewIEEE()
-	_, err = io.CopyN(file, io.TeeReader(r, hash), size)
-	if err != nil {
-		return 0, err
-	}
-	return hash.Sum32(), nil
-}
-
-func (self *DataNodeConfig) ReadBlockList() ([]BlockID, error) {
-	files, err := ioutil.ReadDir(self.BlocksDirectory())
-	if err != nil {
-		return nil, err
-	}
-	var names []BlockID
-	for _, f := range files {
-		names = append(names, BlockID(f.Name()))
-	}
-	return names, nil
-}
-
-func (self *DataNodeConfig) BlocksDirectory() string {
-	return path.Join(DataDir, "blocks")
-}
-
-func (self *DataNodeConfig) ChecksumFromString(s string) (uint32, error) {
-	checksum, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return 0, err
-	} else {
-		return uint32(checksum), nil
-	}
-}
-
-func (self *DataNodeConfig) ReadChecksum(block BlockID) (string, error) {
-	b, err := ioutil.ReadFile(self.ChecksumFilename(block))
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-func (self *DataNodeConfig) WriteChecksum(block BlockID, s string) error {
-	return ioutil.WriteFile(self.ChecksumFilename(block), []byte(s), 0777)
-}
-
-func (self *DataNodeConfig) MetaDirectory() string {
-	return path.Join(DataDir, "meta")
-}
-
-func (self *DataNodeConfig) BlockFilename(block BlockID) string {
-	return path.Join(self.BlocksDirectory(), string(block))
-}
-
-func (self *DataNodeConfig) ChecksumFilename(block BlockID) string {
-	return path.Join(self.MetaDirectory(), string(block) + ".crc32")
-}
-
-func (self *DataNodeConfig) DeleteBlock(block BlockID) error {
-	err := os.Remove(self.BlockFilename(block))
-	if err != nil {
-		return err
-	}
-	err = os.Remove(self.ChecksumFilename(block))
-	return err
-}
-
 type DataNodeState struct {
 	mutex sync.Mutex
 	newBlocks []BlockID
 	deadBlocks []BlockID
 	forwardingBlocks chan ForwardBlock
 	NodeID NodeID
-	Config DataNodeConfig
+	Store BlockStore
+	Manager BlockIntents
 	heartbeatInterval time.Duration
 }
 
@@ -137,7 +37,7 @@ func (self *DataNodeState) DontHaveBlocks(blockIDs []BlockID) {
 
 func (self *DataNodeState) RemoveBlock(block BlockID) {
 	log.Println("Removing block '" + block + "'")
-	err := self.Config.DeleteBlock(block)
+	err := self.Store.DeleteBlock(block)
 	if err != nil {
 		log.Fatalln("Deleting block", block, "->", err)
 	}
@@ -187,7 +87,7 @@ func tick() {
 	log.Println("Heartbeat...")
 	if len(State.NodeID) == 0 {
 		log.Println("Re-reading blocklist")
-		blocks, err := State.Config.ReadBlockList()
+		blocks, err := State.Store.ReadBlockList()
 		if err != nil {
 			log.Fatalln("Getting blocklist:", err)
 		}
@@ -201,7 +101,7 @@ func tick() {
 	}
 
 	// Could be cached so we don't have to hit the filesystem
-	blocks, err := State.Config.ReadBlockList()
+	blocks, err := State.Store.ReadBlockList()
 	if err != nil {
 		log.Fatalln("Getting utilization:", err)
 	}

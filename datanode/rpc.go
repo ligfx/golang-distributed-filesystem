@@ -31,7 +31,7 @@ type RPC struct {
 	checksum uint32
 }
 
-func (self *RPC) GiveBlock(blockID *BlockID, size *int64) error {
+func (self *RPC) GetBlock(blockID *BlockID, size *int64) error {
 	if self.state != Start {
 		return errors.New("Not allowed in current state")
 	}
@@ -39,6 +39,10 @@ func (self *RPC) GiveBlock(blockID *BlockID, size *int64) error {
 	self.blockId = *blockID
 	self.forwardTo = nil
 	self.state = Giving
+
+	// Should be fine if reading,
+	// fail if uploading or deleting
+	self.DataNode.Manager.LockRead(*blockID)
 
 	return nil
 }
@@ -57,6 +61,8 @@ func (self *RPC) ForwardBlock(blockMsg *ForwardBlock, _ *int) error {
 	self.size = blockMsg.Size
 	self.state = Receiving
 
+	// Should blow up if block already exists?
+	self.DataNode.Manager.LockReceive(self.blockId)
 	return nil
 }
 
@@ -65,29 +71,33 @@ func (self *RPC) Confirm(crc *string, _ *int) error {
 		return errors.New("Not allowed in current session state")
 	}
 
-	checksum, err := self.DataNode.Config.ChecksumFromString(*crc)
-	if err != nil {
+	checksum, err := self.DataNode.Store.ChecksumFromString(*crc); if err != nil {
 		return errors.New("Error parsing checksum: " + fmt.Sprint(err))
 	}
 	if checksum != self.checksum {
-		_ = self.DataNode.Config.DeleteBlock(self.blockId)
+		self.DataNode.Manager.AbortReceive(self.blockId)
+		_ = self.DataNode.Store.DeleteBlock(self.blockId)
 		log.Println("Checksum doesn't match for", self.blockId)
 		return errors.New("Checksum doesn't match!")
 	}
 
-	err = self.DataNode.Config.WriteChecksum(self.blockId, *crc)
+	err = self.DataNode.Store.WriteChecksum(self.blockId, *crc)
 	if err != nil {
+		// TODO: Remove block
+		self.DataNode.Manager.AbortReceive(self.blockId)
+		_ = self.DataNode.Store.DeleteBlock(self.blockId)
 		log.Fatalln("Couldn't write checksum:", err)
+		return errors.New("Couldn't write checksum")
 	}
 
-	// Commit ReceiveIntent?
+	self.DataNode.Manager.CommitReceive(self.blockId)
+	// Combine into Block Manager?
+	State.HaveBlocks([]BlockID{self.blockId})
 
 	// Pipeline!
 	if len(self.forwardTo) > 0 {
 		State.forwardingBlocks <- ForwardBlock{self.blockId, self.forwardTo, -1}
 	}
-
-	State.HaveBlocks([]BlockID{self.blockId})
 
 	self.blockId = ""
 	self.size = -1
@@ -97,6 +107,9 @@ func (self *RPC) Confirm(crc *string, _ *int) error {
 }
 
 func sendBlock(blockID BlockID, peers []string) {
+	State.Manager.LockRead(blockID)
+	defer State.Manager.UnlockRead(blockID)
+
 	var peerConn net.Conn
 	var forwardTo []string
 	var err error
@@ -124,7 +137,7 @@ func sendBlock(blockID BlockID, peers []string) {
 	peer := rpc.NewClientWithCodec(peerCodec)
 	defer peer.Close()
 
-	size, err := State.Config.BlockSize(blockID)
+	size, err := State.Store.BlockSize(blockID)
 	if err != nil {
 		log.Fatal("Stat error: ", err)
 	}
@@ -136,12 +149,12 @@ func sendBlock(blockID BlockID, peers []string) {
 		log.Fatal("ForwardBlock error: ", err)
 	}
 
-	err = State.Config.ReadBlock(blockID, size, peerConn)
+	err = State.Store.ReadBlock(blockID, size, peerConn)
 	if err != nil {
 		log.Fatal("Copying error: ", err)
 	}
 	
-	hash, err := State.Config.ReadChecksum(blockID)
+	hash, err := State.Store.ReadChecksum(blockID)
 	if err != nil {
 		log.Fatalln("Reading checksum:", err)
 	}
@@ -152,7 +165,7 @@ func sendBlock(blockID BlockID, peers []string) {
 }
 
 func (self *RPC) receiveBlock() {
-	checksum, err := self.DataNode.Config.WriteBlock(self.blockId, self.size, self.connection)
+	checksum, err := self.DataNode.Store.WriteBlock(self.blockId, self.size, self.connection)
 	if err != nil {
 		log.Fatal("Writing block:", err)
 	}
@@ -162,15 +175,16 @@ func (self *RPC) receiveBlock() {
 }
 
 func (self *RPC) giveBlock() {
-	size, err := self.DataNode.Config.BlockSize(self.blockId)
+	size, err := self.DataNode.Store.BlockSize(self.blockId)
 	if err != nil {
 		log.Fatalln("Getting block size:", err)
 	}
-	err = self.DataNode.Config.ReadBlock(self.blockId, size, self.connection)
+	err = self.DataNode.Store.ReadBlock(self.blockId, size, self.connection)
 	if err != nil {
 		log.Fatalln("Copying error: ", err)
 	}
-	self.state = Start
+	self.DataNode.Manager.UnlockRead(self.blockId)
+	self.state = Done
 }
 
 func RunRPC(c net.Conn, dn DataNodeState) {

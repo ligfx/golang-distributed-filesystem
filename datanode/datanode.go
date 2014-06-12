@@ -11,6 +11,7 @@ import (
 	"path"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 
 	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
@@ -26,6 +27,9 @@ var (
 
 func init() {
 	State.forwardingBlocks = make(chan ForwardBlock)
+	State.Manager.using = map[BlockID]*sync.WaitGroup{}
+	State.Manager.receiving = map[BlockID]bool{}
+	State.Manager.willDelete = map[BlockID]bool{}
 }
 
 func DataNode() {
@@ -37,22 +41,20 @@ func DataNode() {
 
 	addr, socket := util.Listen(*port)
 	log.Print("Accepting connections on " + addr)
-	_, realPort, err := net.SplitHostPort(addr)
-	Port = realPort
-	if err != nil {
+	_, realPort, err := net.SplitHostPort(addr); if err != nil {
 		log.Fatalln("SplitHostPort error:", err)
 	}
+	Port = realPort
 
-	err = os.MkdirAll(path.Join(DataDir, "blocks"), 0777)
-	if err != nil {
-		log.Fatal("Making directory '" + path.Join(DataDir, "blocks") + "': ", err)
+	log.Print("Block storage in directory '" + State.Store.BlocksDirectory() + "'")
+	if err = os.MkdirAll(State.Store.BlocksDirectory(), 0777); err != nil {
+		log.Fatal("Making directory:", err)
 	}
-	log.Print("Block storage in directory '" + path.Join(DataDir, "blocks") + "'")
-	err = os.MkdirAll(path.Join(DataDir, "meta"), 0777)
-	if err != nil {
-		log.Fatal("Making directory '" + path.Join(DataDir, "meta") + "': ", err)
+
+	log.Print("Meta storage in directory '" + State.Store.MetaDirectory() + "'")
+	if err = os.MkdirAll(State.Store.MetaDirectory(), 0777); err != nil {
+		log.Fatal("Making directory:", err)
 	}
-	log.Print("Meta storage in directory '" + path.Join(DataDir, "meta") + "'")
 
 	// Heartbeat and registration
 	go heartbeat()
