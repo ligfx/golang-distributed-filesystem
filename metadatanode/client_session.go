@@ -1,18 +1,19 @@
 package metadatanode
 
 import (
-	"log"
 	"errors"
-	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
+	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
+	"log"
 )
 
 type ClientSession struct {
-	state SessionState
-	server *MetaDataNodeState
-	blob_id string
-	blocks []BlockID
+	state      SessionState
+	server     *MetaDataNodeState
+	blob_id    string
+	blocks     []BlockID
 	remoteAddr string
 }
+
 func (self *ClientSession) CreateBlob(_ *int, ret *string) error {
 	if self.state != Start {
 		return errors.New("Not allowed in current session state")

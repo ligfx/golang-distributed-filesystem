@@ -8,11 +8,11 @@ import (
 	"net/rpc/jsonrpc"
 	"strings"
 
-	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
-	"github.com/michaelmaltese/golang-distributed-filesystem/util"
+	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
 type RPCState int
+
 const (
 	Start RPCState = iota
 	Done
@@ -20,14 +20,15 @@ const (
 	Giving
 	ReadyToConfirm
 )
+
 type RPC struct {
-	state RPCState
-	DataNode DataNodeState
+	state      RPCState
+	DataNode   DataNodeState
 	connection net.Conn
-	blockId BlockID
-	forwardTo []string
-	size int64
-	checksum string
+	blockId    BlockID
+	forwardTo  []string
+	size       int64
+	checksum   string
 }
 
 func (self *RPC) GetBlock(blockID *BlockID, size *int64) error {
@@ -98,7 +99,7 @@ func (self *RPC) Confirm(checksum *string, _ *int) error {
 	self.size = -1
 	self.state = Done
 	self.checksum = ""
-	return nil	
+	return nil
 }
 
 func sendBlock(blockID BlockID, peers []string) {
@@ -128,7 +129,7 @@ func sendBlock(blockID BlockID, peers []string) {
 	}
 	peerCodec := jsonrpc.NewClientCodec(peerConn)
 	if Debug {
-		peerCodec = util.LoggingClientCodec(
+		peerCodec = LoggingClientCodec(
 			peerConn.RemoteAddr().String(),
 			peerCodec)
 	}
@@ -151,7 +152,7 @@ func sendBlock(blockID BlockID, peers []string) {
 	if err != nil {
 		log.Fatal("Copying error: ", err)
 	}
-	
+
 	hash, err := State.Store.ReadChecksum(blockID)
 	if err != nil {
 		log.Fatalln("Reading checksum:", err)
@@ -167,7 +168,7 @@ func (self *RPC) receiveBlock() {
 	if err != nil {
 		log.Fatal("Writing block:", err)
 	}
-	log.Println("Received block '" + string(self.blockId) + "' from", self.connection.RemoteAddr())
+	log.Println("Received block '"+string(self.blockId)+"' from", self.connection.RemoteAddr())
 	self.checksum = checksum
 	self.state = ReadyToConfirm
 }
@@ -191,7 +192,7 @@ func RunRPC(c net.Conn, dn DataNodeState) {
 	server.Register(session)
 	codec := jsonrpc.NewServerCodec(c)
 	if Debug {
-		codec = util.LoggingServerCodec(
+		codec = LoggingServerCodec(
 			c.RemoteAddr().String(),
 			codec)
 	}

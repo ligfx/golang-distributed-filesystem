@@ -8,14 +8,14 @@ import (
 	"sync"
 	"time"
 
-	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
+	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
 var (
 	DataDir string
-	Debug bool
-	Port string
-	State DataNodeState
+	Debug   bool
+	Port    string
+	State   DataNodeState
 )
 
 func init() {
@@ -30,7 +30,7 @@ func DataNode() {
 	port := flag.String("port", "0", "port to listen on (0=random)")
 	flag.StringVar(&DataDir, "dataDir", "_data", "directory to store data")
 	flag.BoolVar(&Debug, "debug", false, "Show RPC conversations")
-	flag.DurationVar(&State.heartbeatInterval, "heartbeatInterval", 3 * time.Second, "")
+	flag.DurationVar(&State.heartbeatInterval, "heartbeatInterval", 3*time.Second, "")
 	flag.Parse()
 
 	log.Print("Block storage in directory '" + State.Store.BlocksDirectory() + "'")
@@ -48,5 +48,5 @@ func DataNode() {
 	go State.IntegrityChecker()
 	go State.BlockForwarder()
 
-	<- make(chan bool)
+	<-make(chan bool)
 }

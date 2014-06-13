@@ -7,6 +7,7 @@ import (
 )
 
 type SessionState int
+
 const (
 	Start SessionState = iota
 	Creating
@@ -19,7 +20,7 @@ func MetadataNode() {
 	State = NewMetaDataNodeState()
 	var (
 		clientPort = flag.String("clientport", "5050", "port to listen on")
-		peerPort = flag.String("peerport", "5051", "port to listen on")
+		peerPort   = flag.String("peerport", "5051", "port to listen on")
 	)
 	flag.BoolVar(&Debug, "debug", false, "Show RPC conversations")
 	flag.IntVar(&State.ReplicationFactor, "replicationFactor", 2, "")
@@ -32,5 +33,5 @@ func MetadataNode() {
 	go State.PeerRPC(*peerPort)
 
 	// Let goroutines run forever
-	<- make(chan bool)
+	<-make(chan bool)
 }

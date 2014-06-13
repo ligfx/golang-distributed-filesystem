@@ -8,20 +8,19 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"os"
 	"strings"
 
-	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
-	"github.com/michaelmaltese/golang-distributed-filesystem/util"
+	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
 func Upload() {
 	var err error
 	var (
 		localFileName = flag.String("file", "", "File to upload")
-		debug = flag.Bool("debug", false, "Show RPC conversation")
+		debug         = flag.Bool("debug", false, "Show RPC conversation")
 	)
 	flag.Parse()
 
@@ -46,7 +45,7 @@ func Upload() {
 
 	codec := jsonrpc.NewClientCodec(conn)
 	if *debug {
-		codec = util.LoggingClientCodec(
+		codec = LoggingClientCodec(
 			conn.RemoteAddr().String(),
 			codec)
 	}
@@ -91,7 +90,7 @@ func Upload() {
 
 		dataNodeCodec := jsonrpc.NewClientCodec(dataNode)
 		if *debug {
-			dataNodeCodec = util.LoggingClientCodec(
+			dataNodeCodec = LoggingClientCodec(
 				dataNode.RemoteAddr().String(),
 				dataNodeCodec)
 		}
@@ -122,7 +121,7 @@ func Upload() {
 			log.Fatal("Confirm error: ", err)
 		}
 	}
-	
+
 	err = client.Call("ClientSession.Commit", nil, nil)
 	if err != nil {
 		log.Fatal("Commit error:", err)

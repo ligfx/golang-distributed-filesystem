@@ -8,21 +8,20 @@ import (
 	"sync"
 	"time"
 
-	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
-	"github.com/michaelmaltese/golang-distributed-filesystem/util"
+	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
 type DataNodeState struct {
-	mutex sync.Mutex
-	newBlocks []BlockID
-	forwardingBlocks chan ForwardBlock
-	NodeID NodeID
-	Store BlockStore
-	Manager BlockIntents
+	mutex             sync.Mutex
+	newBlocks         []BlockID
+	forwardingBlocks  chan ForwardBlock
+	NodeID            NodeID
+	Store             BlockStore
+	Manager           BlockIntents
 	heartbeatInterval time.Duration
 
 	blocksToDelete chan BlockID
-	deadBlocks []BlockID
+	deadBlocks     []BlockID
 }
 
 func (self *DataNodeState) HaveBlocks(blockIDs []BlockID) {
@@ -72,23 +71,24 @@ func (self *DataNodeState) Heartbeat() {
 
 func (self *DataNodeState) BlockForwarder() {
 	for {
-		f := <- self.forwardingBlocks
+		f := <-self.forwardingBlocks
 		sendBlock(f.BlockID, f.Nodes)
 	}
 }
 
 func (self *DataNodeState) RPCServer(port string) {
-	sock, err := net.Listen("tcp", ":" + port)
+	sock, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		log.Fatalln(err)
 	}
 	log.Print("Accepting connections on " + sock.Addr().String())
-	_, realPort, err := net.SplitHostPort(sock.Addr().String()); if err != nil {
+	_, realPort, err := net.SplitHostPort(sock.Addr().String())
+	if err != nil {
 		log.Fatalln("SplitHostPort error:", err)
 	}
 	// Weird race condition with heartbeat, do this first
 	Port = realPort
-	
+
 	for {
 		conn, err := sock.Accept()
 		if err != nil {
@@ -104,7 +104,7 @@ func (self *DataNodeState) IntegrityChecker() {
 		log.Println("Checking block integrity...")
 		files, err := self.Store.ReadBlockList()
 		if err != nil {
-			log.Fatal("Reading directory '" + DataDir + "': ", err)
+			log.Fatal("Reading directory '"+DataDir+"': ", err)
 		}
 		for _, f := range files {
 			if err := self.Manager.LockRead(f); err != nil {
@@ -142,7 +142,7 @@ func tick() {
 	}
 	codec := jsonrpc.NewClientCodec(conn)
 	if Debug {
-		codec = util.LoggingClientCodec(
+		codec = LoggingClientCodec(
 			conn.RemoteAddr().String(),
 			codec)
 	}
@@ -200,7 +200,7 @@ func tick() {
 	}
 	go func() {
 		for _, fwd := range resp.ToReplicate {
-			log.Println("Will replicate '" + string(fwd.BlockID) + "' to", fwd.Nodes)
+			log.Println("Will replicate '"+string(fwd.BlockID)+"' to", fwd.Nodes)
 			State.forwardingBlocks <- fwd
 		}
 	}()

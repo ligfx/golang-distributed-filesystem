@@ -13,19 +13,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nu7hatch/gouuid"
 	"github.com/dotcloud/docker/pkg/namesgenerator"
+	"github.com/nu7hatch/gouuid"
 
-	"github.com/michaelmaltese/golang-distributed-filesystem/util"
-	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
+	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
 type replicationIntent struct {
-	startedAt time.Time
-	sentCommand bool
-	block BlockID
+	startedAt     time.Time
+	sentCommand   bool
+	block         BlockID
 	availableFrom []NodeID
-	forwardTo []NodeID
+	forwardTo     []NodeID
 }
 
 type ReplicationIntents struct {
@@ -44,7 +43,7 @@ func (self *ReplicationIntents) Count(node NodeID) int {
 	for _, intent := range self.intents {
 		for _, n := range intent.forwardTo {
 			if n == node {
-				if time.Since(intent.startedAt) < 20 * time.Second {
+				if time.Since(intent.startedAt) < 20*time.Second {
 					count++
 				}
 			}
@@ -89,7 +88,7 @@ func (self *ReplicationIntents) Done(node NodeID, block BlockID) {
 func (self *ReplicationIntents) InProgress(block BlockID) bool {
 	for i, intent := range self.intents {
 		if intent.block == block {
-			if time.Since(intent.startedAt) < 20 * time.Second {
+			if time.Since(intent.startedAt) < 20*time.Second {
 				return true
 			}
 			self.intents = append(self.intents[:i], self.intents[i+1:]...)
@@ -99,10 +98,10 @@ func (self *ReplicationIntents) InProgress(block BlockID) bool {
 }
 
 type deletionIntent struct {
-	startedAt time.Time
+	startedAt   time.Time
 	sentCommand bool
-	block BlockID
-	node NodeID
+	block       BlockID
+	node        NodeID
 }
 
 type DeletionIntents struct {
@@ -122,7 +121,7 @@ func (self *DeletionIntents) Count(node NodeID) int {
 	var deletions []BlockID
 	for _, intent := range self.intents {
 		if intent.node == node {
-			if time.Since(intent.startedAt) < 20 * time.Second {
+			if time.Since(intent.startedAt) < 20*time.Second {
 				deletions = append(deletions, intent.block)
 			}
 		}
@@ -156,7 +155,7 @@ func (self *DeletionIntents) Done(node NodeID, block BlockID) {
 func (self *DeletionIntents) InProgress(block BlockID) bool {
 	for i, intent := range self.intents {
 		if intent.block == block {
-			if time.Since(intent.startedAt) < 20 * time.Second {
+			if time.Since(intent.startedAt) < 20*time.Second {
 				return true
 			}
 			self.intents = append(self.intents[:i], self.intents[i+1:]...)
@@ -166,16 +165,16 @@ func (self *DeletionIntents) InProgress(block BlockID) bool {
 }
 
 type MetaDataNodeState struct {
-	mutex sync.RWMutex
-	store *DB
-	dataNodes map[NodeID]string
-	dataNodesLastSeen map[NodeID]time.Time
+	mutex                sync.RWMutex
+	store                *DB
+	dataNodes            map[NodeID]string
+	dataNodesLastSeen    map[NodeID]time.Time
 	dataNodesUtilization map[NodeID]int
-	blocks map[BlockID]map[NodeID]bool
-	dataNodesBlocks map[NodeID]map[BlockID]bool
-	replicationIntents ReplicationIntents
-	deletionIntents DeletionIntents
-	ReplicationFactor int
+	blocks               map[BlockID]map[NodeID]bool
+	dataNodesBlocks      map[NodeID]map[BlockID]bool
+	replicationIntents   ReplicationIntents
+	deletionIntents      DeletionIntents
+	ReplicationFactor    int
 }
 
 func NewMetaDataNodeState() *MetaDataNodeState {
@@ -328,25 +327,27 @@ func (self *MetaDataNodeState) HeartbeatFrom(nodeID NodeID, utilization int) boo
 }
 
 type ByRandom []NodeID
+
 func (s ByRandom) Len() int {
-    return len(s)
+	return len(s)
 }
 func (s ByRandom) Swap(i, j int) {
-    s[i], s[j] = s[j], s[i]
+	s[i], s[j] = s[j], s[i]
 }
 func (s ByRandom) Less(i, j int) bool {
-    return rand.Intn(2) == 0 // 0 or 1
+	return rand.Intn(2) == 0 // 0 or 1
 }
 
 type ByUtilization []NodeID
+
 func (s ByUtilization) Len() int {
-    return len(s)
+	return len(s)
 }
 func (s ByUtilization) Swap(i, j int) {
-    s[i], s[j] = s[j], s[i]
+	s[i], s[j] = s[j], s[i]
 }
 func (s ByUtilization) Less(i, j int) bool {
-    return State.Utilization(s[i]) < State.Utilization(s[j])
+	return State.Utilization(s[i]) < State.Utilization(s[j])
 }
 
 func (self *MetaDataNodeState) Utilization(n NodeID) int {
@@ -390,13 +391,14 @@ func rpcServer(c net.Conn, debug bool, obj interface{}) {
 	server.Register(obj)
 	codec := jsonrpc.NewServerCodec(c)
 	if debug {
-		codec = util.LoggingServerCodec(c.RemoteAddr().String(), codec)
+		codec = LoggingServerCodec(c.RemoteAddr().String(), codec)
 	}
 	server.ServeCodec(codec)
 }
 
-func (self *MetaDataNodeState) ClientRPC (port string) {
-	clientSock, err := net.Listen("tcp", ":" + port); if err != nil {
+func (self *MetaDataNodeState) ClientRPC(port string) {
+	clientSock, err := net.Listen("tcp", ":"+port)
+	if err != nil {
 		log.Fatal(err)
 	}
 	log.Println("Accepting client connections on", clientSock.Addr())
@@ -411,21 +413,22 @@ func (self *MetaDataNodeState) ClientRPC (port string) {
 	}
 }
 
-func (self *MetaDataNodeState) PeerRPC (port string) {
-		peerSock, err := net.Listen("tcp", ":" + port); if err != nil {
+func (self *MetaDataNodeState) PeerRPC(port string) {
+	peerSock, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Println("Accepting peer connections on", peerSock.Addr())
+	for {
+		peer, err := peerSock.Accept()
+		if err != nil {
 			log.Fatal(err)
 		}
-		log.Println("Accepting peer connections on", peerSock.Addr())
-		for {
-			peer, err := peerSock.Accept()
-			if err != nil {
-				log.Fatal(err)
-			}
-			go rpcServer(peer,
-					Debug,
-					&PeerSession{Start, State, peer.RemoteAddr().String()})
-		}
+		go rpcServer(peer,
+			Debug,
+			&PeerSession{Start, State, peer.RemoteAddr().String()})
 	}
+}
 
 func (self *MetaDataNodeState) Monitor() {
 	for {
@@ -433,7 +436,7 @@ func (self *MetaDataNodeState) Monitor() {
 		// This sucks. Probably could do a separate lock for DataNodes and file stuff
 		self.mutex.Lock()
 		for id, lastSeen := range self.dataNodesLastSeen {
-			if time.Since(lastSeen) > 10 * time.Second {
+			if time.Since(lastSeen) > 10*time.Second {
 				log.Println("Forgetting absent node:", id)
 				delete(self.dataNodesLastSeen, id)
 				delete(self.dataNodes, id)
@@ -461,7 +464,7 @@ func (self *MetaDataNodeState) Monitor() {
 				var deleteFrom []NodeID
 				nodesByUtilization := self.MostUsedNodes()
 				for _, nodeID := range nodesByUtilization {
-					if len(nodes) - len(deleteFrom) <= self.ReplicationFactor {
+					if len(nodes)-len(deleteFrom) <= self.ReplicationFactor {
 						break
 					}
 					if nodes[nodeID] {
@@ -476,10 +479,10 @@ func (self *MetaDataNodeState) Monitor() {
 				var forwardTo []NodeID
 				nodesByUtilization := self.LeastUsedNodes()
 				for _, nodeID := range nodesByUtilization {
-					if len(forwardTo) + len(nodes) >= self.ReplicationFactor {
+					if len(forwardTo)+len(nodes) >= self.ReplicationFactor {
 						break
 					}
-					if ! nodes[nodeID] {
+					if !nodes[nodeID] {
 						forwardTo = append(forwardTo, nodeID)
 					}
 				}
@@ -517,9 +520,9 @@ func (self *MetaDataNodeState) Monitor() {
 				sort.Sort(ByRandom(moreThanAverage))
 				sort.Stable(sort.Reverse(ByUtilization(moreThanAverage)))
 
-				Nodes:
+			Nodes:
 				for _, lessNode := range lessThanAverage {
-					Blocks:
+				Blocks:
 					for block, _ := range self.dataNodesBlocks[moreThanAverage[0]] {
 						for existingBlock, _ := range self.dataNodesBlocks[lessNode] {
 							if block == existingBlock {

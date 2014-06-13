@@ -4,15 +4,15 @@ import (
 	"errors"
 	"sync"
 
-	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
+	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
 // Linearizes access to blocks
 type BlockIntents struct {
-	using map[BlockID]*sync.WaitGroup
-	receiving map[BlockID]bool
+	using      map[BlockID]*sync.WaitGroup
+	receiving  map[BlockID]bool
 	willDelete map[BlockID]bool
-	exists map[BlockID]bool
+	exists     map[BlockID]bool
 
 	lock sync.Mutex
 }
@@ -28,7 +28,7 @@ type BlockIntents struct {
 //   can't queue that up.
 // - If a block is being read, don't delete it!
 
-// TODO: 
+// TODO:
 
 func (self *BlockIntents) LockReceive(block BlockID) {
 	self.lock.Lock()
@@ -39,7 +39,7 @@ func (self *BlockIntents) LockReceive(block BlockID) {
 func (self *BlockIntents) CommitReceive(block BlockID) {
 	self.lock.Lock()
 	defer self.lock.Unlock()
-	
+
 	self.exists[block] = true
 	self.receiving[block] = false
 }
@@ -47,7 +47,7 @@ func (self *BlockIntents) CommitReceive(block BlockID) {
 func (self *BlockIntents) AbortReceive(block BlockID) {
 	self.lock.Lock()
 	defer self.lock.Unlock()
-	
+
 	delete(self.willDelete, block)
 	delete(self.receiving, block)
 	delete(self.using, block)

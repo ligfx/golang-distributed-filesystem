@@ -8,11 +8,11 @@ import (
 	"os"
 	"path"
 
-	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
+	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
 // Deals with filesystem
-type BlockStore struct {}
+type BlockStore struct{}
 
 func (self *BlockStore) BlockSize(block BlockID) (int64, error) {
 	fileInfo, err := os.Stat(self.BlockFilename(block))
@@ -23,7 +23,8 @@ func (self *BlockStore) BlockSize(block BlockID) (int64, error) {
 }
 
 func (self *BlockStore) LocalChecksum(block BlockID) (string, error) {
-	file, err := os.Open(self.BlockFilename(block)); if err != nil {
+	file, err := os.Open(self.BlockFilename(block))
+	if err != nil {
 		return "", err
 	}
 	defer file.Close()
@@ -99,7 +100,7 @@ func (self *BlockStore) BlockFilename(block BlockID) string {
 }
 
 func (self *BlockStore) ChecksumFilename(block BlockID) string {
-	return path.Join(self.MetaDirectory(), string(block) + ".crc32")
+	return path.Join(self.MetaDirectory(), string(block)+".crc32")
 }
 
 func (self *BlockStore) DeleteBlock(block BlockID) error {

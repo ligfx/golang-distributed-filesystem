@@ -1,4 +1,4 @@
-package util
+package common
 
 import (
 	"fmt"
@@ -30,7 +30,7 @@ func (self *loggingServerCodec) ReadRequestBody(p interface{}) error {
 	case v.IsValid():
 		log.Println(self.remote, "->", self.lastMethod, fmt.Sprintf("%+v", v.Interface()))
 	default:
-		
+
 	}
 	return err
 }
@@ -55,8 +55,8 @@ type loggingClientCodec struct {
 }
 
 type clientRequest struct {
-	Method string         `json:"method"`
-    Params []interface{} `json:"params"`
+	Method string        `json:"method"`
+	Params []interface{} `json:"params"`
 }
 
 func (self *loggingClientCodec) ReadResponseBody(p interface{}) error {

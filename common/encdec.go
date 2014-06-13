@@ -1,29 +1,29 @@
 // Network protocol and other communications issues.
-package comm
+package common
 
 type BlockID string
 type NodeID string
 
 type ForwardBlock struct {
 	BlockID BlockID
-	Nodes []string
-	Size int64
+	Nodes   []string
+	Size    int64
 }
 
 type RegistrationMsg struct {
-	Port string
+	Port   string
 	Blocks []BlockID
 }
 
 type HeartbeatMsg struct {
-	NodeID NodeID
-	SpaceUsed int
-	NewBlocks []BlockID
+	NodeID     NodeID
+	SpaceUsed  int
+	NewBlocks  []BlockID
 	DeadBlocks []BlockID
 }
 
 type HeartbeatResponse struct {
-	NeedToRegister bool
+	NeedToRegister   bool
 	InvalidateBlocks []BlockID
-	ToReplicate []ForwardBlock
+	ToReplicate      []ForwardBlock
 }
