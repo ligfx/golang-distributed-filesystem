@@ -26,7 +26,7 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [x] MetaDataNode balances blocks as it runs!
 - [x] Record hash digest of blocks, reject send if hash is wrong
 - [x] DataNode needs to keep track of blocks it's receiving / deleting / checking so that the integrity checker can run only on real blocks
-- [ ] Remove blocks if checksum doesn't match
+- [x] Remove blocks if checksum doesn't match
 - [ ] Don't need to wait around to delete blocks, just prevent any new reads and we'll come back to them
 - [ ] Support multiple MetaDataNodes somehow (DHT? Raft? Get rid of MetaDataNodes and use Gossip?)
 - [ ] Keep track of MoveIntents (subtract from predicted utilization of node), might fix the volatility when re-balancing

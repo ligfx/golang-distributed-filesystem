@@ -15,12 +15,14 @@ import (
 type DataNodeState struct {
 	mutex sync.Mutex
 	newBlocks []BlockID
-	deadBlocks []BlockID
 	forwardingBlocks chan ForwardBlock
 	NodeID NodeID
 	Store BlockStore
 	Manager BlockIntents
 	heartbeatInterval time.Duration
+
+	blocksToDelete chan BlockID
+	deadBlocks []BlockID
 }
 
 func (self *DataNodeState) HaveBlocks(blockIDs []BlockID) {
@@ -36,9 +38,10 @@ func (self *DataNodeState) DontHaveBlocks(blockIDs []BlockID) {
 }
 
 func (self *DataNodeState) RemoveBlock(block BlockID) {
+	self.Manager.LockDelete(block)
+	defer self.Manager.CommitDelete(block)
 	log.Println("Removing block '" + block + "'")
-	err := self.Store.DeleteBlock(block)
-	if err != nil {
+	if err := self.Store.DeleteBlock(block); err != nil {
 		log.Fatalln("Deleting block", block, "->", err)
 	}
 	self.DontHaveBlocks([]BlockID{block})
@@ -90,6 +93,10 @@ func tick() {
 		blocks, err := State.Store.ReadBlockList()
 		if err != nil {
 			log.Fatalln("Getting blocklist:", err)
+		}
+		for _, b := range blocks {
+			// Seems hacky
+			State.Manager.exists[b] = true
 		}
 		err = client.Call("PeerSession.Register", &RegistrationMsg{Port, blocks}, &State.NodeID)
 		if err != nil {

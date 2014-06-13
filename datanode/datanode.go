@@ -3,14 +3,9 @@ package datanode
 
 import (
 	"flag"
-	"hash/crc32"
-	"io"
-	"io/ioutil"
 	"log"
 	"os"
-	"path"
 	"net"
-	"strconv"
 	"sync"
 	"time"
 
@@ -30,6 +25,7 @@ func init() {
 	State.Manager.using = map[BlockID]*sync.WaitGroup{}
 	State.Manager.receiving = map[BlockID]bool{}
 	State.Manager.willDelete = map[BlockID]bool{}
+	State.Manager.exists = map[BlockID]bool{}
 }
 
 func DataNode() {
@@ -67,46 +63,35 @@ func DataNode() {
 	}()
 
 	go func() {
-		// Need to keep track of which files we actually have
-		// and aren't in the middle of receiving or deleting
-		return
-
 		for {
 			time.Sleep(5 * time.Second)
 			log.Println("Checking block integrity...")
-			files, err := ioutil.ReadDir(path.Join(DataDir, "blocks"))
+			files, err := State.Store.ReadBlockList()
 			if err != nil {
 				log.Fatal("Reading directory '" + DataDir + "': ", err)
 			}
 			for _, f := range files {
-				name := f.Name()
-				hashFile, err := ioutil.ReadFile(path.Join(DataDir, "meta", name + ".crc32"))
-				if err != nil {
-					log.Println("Reading checksum:", path.Join(DataDir, "meta", name + ".crc32"))
-					log.Println("Skipping for now")
+				if err := State.Manager.LockRead(f); err != nil {
+					// Being uploaded or deleted
+					// May or may not actually exist now/in the future
+					// Does not imply it actually exists!
 					continue
 				}
-
-				crc := crc32.NewIEEE()
-				block, err := os.Open(path.Join(DataDir, "blocks", name))
+				storedChecksum, err := State.Store.ReadChecksum(f)
 				if err != nil {
-					log.Println("Opening block:", err)
-					log.Println("Skipping for now")
-					continue
+					go State.RemoveBlock(BlockID(f))
 				}
-				_, err = io.CopyN(crc, block, f.Size())
+				localChecksum, err := State.Store.LocalChecksum(f)
 				if err != nil {
-					log.Fatalln("Hashing block:", block)
-				}
-				hash, err := strconv.ParseInt(string(hashFile), 10, 64)
-				if err != nil {
-					log.Fatal("Error parsing hash")
+					go State.RemoveBlock(BlockID(f))
 				}
 
-				if crc.Sum32() != uint32(hash) {
-					log.Println("Checksum doesn't match block:", name)
-					State.RemoveBlock(BlockID(name))
+				if storedChecksum != localChecksum {
+					log.Println("Checksum doesn't match block:", f)
+					log.Println(storedChecksum, localChecksum)
+					go State.RemoveBlock(BlockID(f))
 				}
+				State.Manager.UnlockRead(f)
 			}
 		}
 	}()

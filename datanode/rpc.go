@@ -2,7 +2,6 @@ package datanode
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"net/rpc"
@@ -28,7 +27,7 @@ type RPC struct {
 	blockId BlockID
 	forwardTo []string
 	size int64
-	checksum uint32
+	checksum string
 }
 
 func (self *RPC) GetBlock(blockID *BlockID, size *int64) error {
@@ -66,22 +65,18 @@ func (self *RPC) ForwardBlock(blockMsg *ForwardBlock, _ *int) error {
 	return nil
 }
 
-func (self *RPC) Confirm(crc *string, _ *int) error {
+func (self *RPC) Confirm(checksum *string, _ *int) error {
 	if self.state != ReadyToConfirm {
 		return errors.New("Not allowed in current session state")
 	}
-
-	checksum, err := self.DataNode.Store.ChecksumFromString(*crc); if err != nil {
-		return errors.New("Error parsing checksum: " + fmt.Sprint(err))
-	}
-	if checksum != self.checksum {
+	if *checksum != self.checksum {
 		self.DataNode.Manager.AbortReceive(self.blockId)
 		_ = self.DataNode.Store.DeleteBlock(self.blockId)
 		log.Println("Checksum doesn't match for", self.blockId)
 		return errors.New("Checksum doesn't match!")
 	}
 
-	err = self.DataNode.Store.WriteChecksum(self.blockId, *crc)
+	err := self.DataNode.Store.WriteChecksum(self.blockId, *checksum)
 	if err != nil {
 		// TODO: Remove block
 		self.DataNode.Manager.AbortReceive(self.blockId)
@@ -102,12 +97,15 @@ func (self *RPC) Confirm(crc *string, _ *int) error {
 	self.blockId = ""
 	self.size = -1
 	self.state = Done
-	self.checksum = 0
+	self.checksum = ""
 	return nil	
 }
 
 func sendBlock(blockID BlockID, peers []string) {
-	State.Manager.LockRead(blockID)
+	if err := State.Manager.LockRead(blockID); err != nil {
+		log.Println("Couldn't lock", blockID)
+		return
+	}
 	defer State.Manager.UnlockRead(blockID)
 
 	var peerConn net.Conn
@@ -189,7 +187,7 @@ func (self *RPC) giveBlock() {
 
 func RunRPC(c net.Conn, dn DataNodeState) {
 	server := rpc.NewServer()
-	session := &RPC{Start, State, c, "", nil, -1, 0}
+	session := &RPC{Start, State, c, "", nil, -1, ""}
 	server.Register(session)
 	codec := jsonrpc.NewServerCodec(c)
 	if Debug {
