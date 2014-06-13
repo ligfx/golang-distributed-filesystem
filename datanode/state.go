@@ -63,10 +63,72 @@ func (self *DataNodeState) DrainDeadBlocks() []BlockID {
 	return deadBlocks
 }
 
-func heartbeat() {
+func (self *DataNodeState) Heartbeat() {
 	for {
 		tick()
-		time.Sleep(State.heartbeatInterval)
+		time.Sleep(self.heartbeatInterval)
+	}
+}
+
+func (self *DataNodeState) BlockForwarder() {
+	for {
+		f := <- self.forwardingBlocks
+		sendBlock(f.BlockID, f.Nodes)
+	}
+}
+
+func (self *DataNodeState) RPCServer(port string) {
+	sock, err := net.Listen("tcp", ":" + port)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	log.Print("Accepting connections on " + sock.Addr().String())
+	_, realPort, err := net.SplitHostPort(sock.Addr().String()); if err != nil {
+		log.Fatalln("SplitHostPort error:", err)
+	}
+	// Weird race condition with heartbeat, do this first
+	Port = realPort
+	
+	for {
+		conn, err := sock.Accept()
+		if err != nil {
+			log.Fatalln(err)
+		}
+		go RunRPC(conn, State)
+	}
+}
+
+func (self *DataNodeState) IntegrityChecker() {
+	for {
+		time.Sleep(5 * time.Second)
+		log.Println("Checking block integrity...")
+		files, err := self.Store.ReadBlockList()
+		if err != nil {
+			log.Fatal("Reading directory '" + DataDir + "': ", err)
+		}
+		for _, f := range files {
+			if err := self.Manager.LockRead(f); err != nil {
+				// Being uploaded or deleted
+				// May or may not actually exist now/in the future
+				// Does not imply it actually exists!
+				continue
+			}
+			storedChecksum, err := self.Store.ReadChecksum(f)
+			if err != nil {
+				go State.RemoveBlock(BlockID(f))
+			}
+			localChecksum, err := self.Store.LocalChecksum(f)
+			if err != nil {
+				go State.RemoveBlock(BlockID(f))
+			}
+
+			if storedChecksum != localChecksum {
+				log.Println("Checksum doesn't match block:", f)
+				log.Println(storedChecksum, localChecksum)
+				go self.RemoveBlock(BlockID(f))
+			}
+			self.Manager.UnlockRead(f)
+		}
 	}
 }
 

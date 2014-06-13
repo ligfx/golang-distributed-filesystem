@@ -5,6 +5,9 @@ import (
 	"crypto/sha1"
 	"log"
 	"math/rand"
+	"net"
+	"net/rpc"
+	"net/rpc/jsonrpc"
 	"sort"
 	"strings"
 	"sync"
@@ -13,6 +16,7 @@ import (
 	"github.com/nu7hatch/gouuid"
 	"github.com/dotcloud/docker/pkg/namesgenerator"
 
+	"github.com/michaelmaltese/golang-distributed-filesystem/util"
 	. "github.com/michaelmaltese/golang-distributed-filesystem/comm"
 )
 
@@ -381,42 +385,83 @@ func (self *MetaDataNodeState) CommitBlob(name string, blocks []BlockID) {
 	}
 }
 
+func rpcServer(c net.Conn, debug bool, obj interface{}) {
+	server := rpc.NewServer()
+	server.Register(obj)
+	codec := jsonrpc.NewServerCodec(c)
+	if debug {
+		codec = util.LoggingServerCodec(c.RemoteAddr().String(), codec)
+	}
+	server.ServeCodec(codec)
+}
 
-func monitor() {
+func (self *MetaDataNodeState) ClientRPC (port string) {
+	clientSock, err := net.Listen("tcp", ":" + port); if err != nil {
+		log.Fatal(err)
+	}
+	log.Println("Accepting client connections on", clientSock.Addr())
+	for {
+		client, err := clientSock.Accept()
+		if err != nil {
+			log.Fatal(err)
+		}
+		go rpcServer(client,
+			Debug,
+			&ClientSession{Start, State, "", nil, client.RemoteAddr().String()})
+	}
+}
+
+func (self *MetaDataNodeState) PeerRPC (port string) {
+		peerSock, err := net.Listen("tcp", ":" + port); if err != nil {
+			log.Fatal(err)
+		}
+		log.Println("Accepting peer connections on", peerSock.Addr())
+		for {
+			peer, err := peerSock.Accept()
+			if err != nil {
+				log.Fatal(err)
+			}
+			go rpcServer(peer,
+					Debug,
+					&PeerSession{Start, State, peer.RemoteAddr().String()})
+		}
+	}
+
+func (self *MetaDataNodeState) Monitor() {
 	for {
 		log.Println("Monitor checking system..")
 		// This sucks. Probably could do a separate lock for DataNodes and file stuff
-		State.mutex.Lock()
-		for id, lastSeen := range State.dataNodesLastSeen {
+		self.mutex.Lock()
+		for id, lastSeen := range self.dataNodesLastSeen {
 			if time.Since(lastSeen) > 10 * time.Second {
 				log.Println("Forgetting absent node:", id)
-				delete(State.dataNodesLastSeen, id)
-				delete(State.dataNodes, id)
-				delete(State.dataNodesUtilization, id)
-				for block, _ := range State.dataNodesBlocks[id] {
-					delete(State.blocks[block], id)
+				delete(self.dataNodesLastSeen, id)
+				delete(self.dataNodes, id)
+				delete(self.dataNodesUtilization, id)
+				for block, _ := range self.dataNodesBlocks[id] {
+					delete(self.blocks[block], id)
 				}
-				delete(State.dataNodesBlocks, id)
+				delete(self.dataNodesBlocks, id)
 			}
 		}
 
-		for blockID, nodes := range State.blocks {
+		for blockID, nodes := range self.blocks {
 			switch {
 			default:
 				continue
 
-			case State.replicationIntents.InProgress(blockID):
+			case self.replicationIntents.InProgress(blockID):
 				continue
 
-			case State.deletionIntents.InProgress(blockID):
+			case self.deletionIntents.InProgress(blockID):
 				continue
 
-			case len(nodes) > State.ReplicationFactor:
+			case len(nodes) > self.ReplicationFactor:
 				log.Println("Block '" + blockID + "' is over-replicated")
 				var deleteFrom []NodeID
-				nodesByUtilization := State.MostUsedNodes()
+				nodesByUtilization := self.MostUsedNodes()
 				for _, nodeID := range nodesByUtilization {
-					if len(nodes) - len(deleteFrom) <= State.ReplicationFactor {
+					if len(nodes) - len(deleteFrom) <= self.ReplicationFactor {
 						break
 					}
 					if nodes[nodeID] {
@@ -424,14 +469,14 @@ func monitor() {
 					}
 				}
 				log.Printf("Deleting from: %v", deleteFrom)
-				State.deletionIntents.Add(blockID, deleteFrom)
+				self.deletionIntents.Add(blockID, deleteFrom)
 
-			case len(nodes) < State.ReplicationFactor:
+			case len(nodes) < self.ReplicationFactor:
 				log.Println("Block '" + blockID + "' is under-replicated!")
 				var forwardTo []NodeID
-				nodesByUtilization := State.LeastUsedNodes()
+				nodesByUtilization := self.LeastUsedNodes()
 				for _, nodeID := range nodesByUtilization {
-					if len(forwardTo) + len(nodes) >= State.ReplicationFactor {
+					if len(forwardTo) + len(nodes) >= self.ReplicationFactor {
 						break
 					}
 					if ! nodes[nodeID] {
@@ -443,20 +488,20 @@ func monitor() {
 				for n, _ := range nodes {
 					availableFrom = append(availableFrom, n)
 				}
-				State.replicationIntents.Add(blockID, availableFrom, forwardTo)
+				self.replicationIntents.Add(blockID, availableFrom, forwardTo)
 			}
 		}
 
-		if len(State.dataNodes) != 0 {
+		if len(self.dataNodes) != 0 {
 			totalUtilization := 0
-			for _, utilization := range State.dataNodesUtilization {
+			for _, utilization := range self.dataNodesUtilization {
 				totalUtilization += utilization
 			}
-			avgUtilization := totalUtilization / len(State.dataNodes)
+			avgUtilization := totalUtilization / len(self.dataNodes)
 
 			var lessThanAverage []NodeID
 			var moreThanAverage []NodeID
-			for node, utilization := range State.dataNodesUtilization {
+			for node, utilization := range self.dataNodesUtilization {
 				switch {
 				case utilization < avgUtilization:
 					lessThanAverage = append(lessThanAverage, node)
@@ -475,28 +520,28 @@ func monitor() {
 				Nodes:
 				for _, lessNode := range lessThanAverage {
 					Blocks:
-					for block, _ := range State.dataNodesBlocks[moreThanAverage[0]] {
-						for existingBlock, _ := range State.dataNodesBlocks[lessNode] {
+					for block, _ := range self.dataNodesBlocks[moreThanAverage[0]] {
+						for existingBlock, _ := range self.dataNodesBlocks[lessNode] {
 							if block == existingBlock {
 								continue Blocks
 							}
 						}
 
 						switch {
-						case State.replicationIntents.InProgress(block):
+						case self.replicationIntents.InProgress(block):
 							continue Blocks
 
-						case State.deletionIntents.InProgress(block):
+						case self.deletionIntents.InProgress(block):
 							continue Blocks
 
 						default:
 							var nodes []NodeID
-							for n, _ := range State.blocks[block] {
+							for n, _ := range self.blocks[block] {
 								nodes = append(nodes, n)
 							}
 							log.Println("Move a block from", moreThanAverage[0], "to", lessNode)
-							State.replicationIntents.Add(block, nodes, []NodeID{lessNode})
-							if State.Utilization(lessThanAverage[0]) >= avgUtilization {
+							self.replicationIntents.Add(block, nodes, []NodeID{lessNode})
+							if self.Utilization(lessThanAverage[0]) >= avgUtilization {
 								lessThanAverage = lessThanAverage[1:]
 							}
 							break Nodes
@@ -506,19 +551,19 @@ func monitor() {
 
 				// Prevent infinite loop
 				moveIntents[moreThanAverage[0]]++
-				State.dataNodesUtilization[moreThanAverage[0]]--
-				if State.Utilization(moreThanAverage[0]) <= avgUtilization {
+				self.dataNodesUtilization[moreThanAverage[0]]--
+				if self.Utilization(moreThanAverage[0]) <= avgUtilization {
 					moreThanAverage = moreThanAverage[1:]
 				}
 			}
 
 			// So I don't have to write another sorter
 			for node, offset := range moveIntents {
-				State.dataNodesUtilization[node] += offset
+				self.dataNodesUtilization[node] += offset
 			}
 		}
 
-		State.mutex.Unlock()
+		self.mutex.Unlock()
 
 		time.Sleep(3 * time.Second)
 	}

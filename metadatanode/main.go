@@ -4,11 +4,6 @@ package metadatanode
 import (
 	"flag"
 	"log"
-	"net"
-	"net/rpc"
-	"net/rpc/jsonrpc"
-
-	"github.com/michaelmaltese/golang-distributed-filesystem/util"
 )
 
 type SessionState int
@@ -17,47 +12,25 @@ const (
 	Creating
 )
 
-func rpcServer(c net.Conn, debug bool, obj interface{}) {
-	server := rpc.NewServer()
-	server.Register(obj)
-	codec := jsonrpc.NewServerCodec(c)
-	if debug {
-		codec = util.LoggingServerCodec(c.RemoteAddr().String(), codec)
-	}
-	server.ServeCodec(codec)
-}
-
 var State *MetaDataNodeState
+var Debug bool
 
 func MetadataNode() {
 	State = NewMetaDataNodeState()
 	var (
 		clientPort = flag.String("clientport", "5050", "port to listen on")
 		peerPort = flag.String("peerport", "5051", "port to listen on")
-		debug = flag.Bool("debug", false, "Show RPC conversations")
 	)
+	flag.BoolVar(&Debug, "debug", false, "Show RPC conversations")
 	flag.IntVar(&State.ReplicationFactor, "replicationFactor", 2, "")
 	flag.Parse()
 
-	clientAddr, clientChan := util.Listen(*clientPort)
-	peerAddr, peerChan := util.Listen(*peerPort)
-	log.Println("Accepting client connections on", clientAddr)
-	log.Println("Accepting peer connections on", peerAddr)
 	log.Println("Replication factor of", State.ReplicationFactor)
 
-	go monitor()
+	go State.Monitor()
+	go State.ClientRPC(*clientPort)
+	go State.PeerRPC(*peerPort)
 
-	for {
-		select {
-		case client := <- clientChan:
-			go rpcServer(client,
-				*debug,
-				&ClientSession{Start, State, "", nil, client.RemoteAddr().String()})
-
-		case peer := <- peerChan:
-			go rpcServer(peer,
-				*debug,
-				&PeerSession{Start, State, peer.RemoteAddr().String()})
-		}
-	}
+	// Let goroutines run forever
+	<- make(chan bool)
 }
