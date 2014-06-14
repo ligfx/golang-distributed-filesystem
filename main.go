@@ -4,6 +4,8 @@ import (
 	"math/rand"
 	"time"
 
+	. "github.com/michaelmaltese/golang-distributed-filesystem/pkg/command"
+
 	"github.com/michaelmaltese/golang-distributed-filesystem/datanode"
 	"github.com/michaelmaltese/golang-distributed-filesystem/metadatanode"
 	"github.com/michaelmaltese/golang-distributed-filesystem/upload"

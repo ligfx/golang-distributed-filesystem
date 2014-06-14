@@ -1,6 +1,5 @@
 language: go
 install: curl -s https://raw.githubusercontent.com/pote/gpm/v1.2.1/bin/gpm | bash
-script: go build
 go:
   - 1.2
   - tip

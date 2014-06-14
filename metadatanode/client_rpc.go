@@ -76,14 +76,10 @@ func runClientRPC(c net.Conn, mdn *MetaDataNodeState) {
 }
 
 
-func (self *MetaDataNodeState) ClientRPCServer(port string) {
-	clientSock, err := net.Listen("tcp", ":"+port)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Println("Accepting client connections on", clientSock.Addr())
+func (self *MetaDataNodeState) ClientRPCServer(sock net.Listener) {
+	log.Println("Accepting client connections on", sock.Addr())
 	for {
-		client, err := clientSock.Accept()
+		client, err := sock.Accept()
 		if err != nil {
 			log.Fatal(err)
 		}

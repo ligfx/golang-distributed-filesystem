@@ -1,4 +1,5 @@
-package main
+// Replace with https://github.com/codegangsta/cli and https://github.com/dotcloud/docker/pkg/mflag
+package command
 
 import (
 	"fmt"

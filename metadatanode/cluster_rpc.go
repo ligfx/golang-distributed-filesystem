@@ -40,12 +40,14 @@ func runClusterRPC(c net.Conn, mdn *MetaDataNodeState) {
 			return
 		}
 		var resp HeartbeatResponse
+		// If we don't recognize the node, it needs to re-register
 		resp.NeedToRegister = !mdn.HeartbeatFrom(msg.NodeID, msg.SpaceUsed)
 		if resp.NeedToRegister {
 			server.Send(&resp)
 			return
 		}
 		log.Println("Heartbeat from '"+msg.NodeID+"', space used", msg.SpaceUsed)
+		// Update our record of what blocks this Node has
 		mdn.HasBlocks(msg.NodeID, msg.NewBlocks)
 		mdn.DoesntHaveBlocks(msg.NodeID, msg.DeadBlocks)
 		for _, blockID := range msg.NewBlocks {
@@ -54,7 +56,9 @@ func runClusterRPC(c net.Conn, mdn *MetaDataNodeState) {
 		for _, blockID := range msg.DeadBlocks {
 			log.Println("Block '" + string(blockID) + "' de-registered from " + string(msg.NodeID))
 		}
+		// Tell this node to delete blocks
 		resp.InvalidateBlocks = mdn.deletionIntents.Get(msg.NodeID)
+		// Tell this node to forward blocks
 		for block, nodes := range mdn.replicationIntents.Get(msg.NodeID) {
 			var addrs []string
 			for _, n := range nodes {
@@ -69,14 +73,10 @@ func runClusterRPC(c net.Conn, mdn *MetaDataNodeState) {
 	}
 }
 
-func (self *MetaDataNodeState) ClusterRPCServer(port string) {
-	peerSock, err := net.Listen("tcp", ":"+port)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Println("Accepting peer connections on", peerSock.Addr())
+func (self *MetaDataNodeState) ClusterRPCServer(sock net.Listener) {
+	log.Println("Accepting peer connections on", sock.Addr())
 	for {
-		peer, err := peerSock.Accept()
+		peer, err := sock.Accept()
 		if err != nil {
 			log.Fatal(err)
 		}

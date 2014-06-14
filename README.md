@@ -27,6 +27,7 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [x] Record hash digest of blocks, reject send if hash is wrong
 - [x] DataNode needs to keep track of blocks it's receiving / deleting / checking so that the integrity checker can run only on real blocks
 - [x] Remove blocks if checksum doesn't match
+- [ ] Run a cluster in a single process for testing
 - [ ] Don't need to wait around to delete blocks, just prevent any new reads and we'll come back to them
 - [ ] DataNode should do stuff on startup, and then spawn workers, not just spawn everybody (race conditions with address and data directories)
 - [ ] Allow decommissioning nodes
