@@ -29,8 +29,8 @@ func MetadataNode() {
 	log.Println("Replication factor of", State.ReplicationFactor)
 
 	go State.Monitor()
-	go State.ClientRPC(*clientPort)
-	go State.PeerRPC(*peerPort)
+	go State.ClientRPCServer(*clientPort)
+	go State.ClusterRPCServer(*peerPort)
 
 	// Let goroutines run forever
 	<-make(chan bool)

@@ -5,9 +5,6 @@ import (
 	"crypto/sha1"
 	"log"
 	"math/rand"
-	"net"
-	"net/rpc"
-	"net/rpc/jsonrpc"
 	"sort"
 	"strings"
 	"sync"
@@ -383,33 +380,6 @@ func (self *MetaDataNodeState) CommitBlob(name string, blocks []BlockID) {
 	defer self.mutex.Unlock()
 	for _, b := range blocks {
 		self.store.Append(name, string(b))
-	}
-}
-
-func rpcServer(c net.Conn, debug bool, obj interface{}) {
-	server := rpc.NewServer()
-	server.Register(obj)
-	codec := jsonrpc.NewServerCodec(c)
-	if debug {
-		codec = LoggingServerCodec(c.RemoteAddr().String(), codec)
-	}
-	server.ServeCodec(codec)
-}
-
-func (self *MetaDataNodeState) PeerRPC(port string) {
-	peerSock, err := net.Listen("tcp", ":"+port)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Println("Accepting peer connections on", peerSock.Addr())
-	for {
-		peer, err := peerSock.Accept()
-		if err != nil {
-			log.Fatal(err)
-		}
-		go rpcServer(peer,
-			Debug,
-			&PeerSession{Start, State, peer.RemoteAddr().String()})
 	}
 }
 

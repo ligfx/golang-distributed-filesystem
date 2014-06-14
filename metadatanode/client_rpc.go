@@ -76,7 +76,7 @@ func runClientRPC(c net.Conn, mdn *MetaDataNodeState) {
 }
 
 
-func (self *MetaDataNodeState) ClientRPC(port string) {
+func (self *MetaDataNodeState) ClientRPCServer(port string) {
 	clientSock, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		log.Fatal(err)

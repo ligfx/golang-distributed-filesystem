@@ -138,7 +138,7 @@ func tick() {
 			// Seems hacky
 			State.Manager.exists[b] = true
 		}
-		err = client.Call("PeerSession.Register", &RegistrationMsg{Port, blocks}, &State.NodeID)
+		err = client.Call("Register", &RegistrationMsg{Port, blocks}, &State.NodeID)
 		if err != nil {
 			log.Println("Registration error:", err)
 			return
@@ -157,7 +157,7 @@ func tick() {
 	deadBlocks := State.DrainDeadBlocks()
 	var resp HeartbeatResponse
 
-	err = client.Call("PeerSession.Heartbeat",
+	err = client.Call("Heartbeat",
 		HeartbeatMsg{State.NodeID, spaceUsed, newBlocks, deadBlocks},
 		&resp)
 	if err != nil {
