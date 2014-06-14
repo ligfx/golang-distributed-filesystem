@@ -30,10 +30,13 @@ func main() {
 		heartbeatInterval := flag.Duration("heartbeatInterval", 3*time.Second, "")
 		flag.Parse()
 
+		listener, err := net.Listen("tcp", ":"+fmt.Sprintf("%d", *port)); if err != nil {
+			log.Fatal(err) }
+
 		conf := datanode.Config{
 			*dataDir,
 			debug,
-			fmt.Sprintf("%d", *port),
+			listener,
 			*heartbeatInterval}
 		datanode.Create(conf)
 		// Wait on goroutines
@@ -66,6 +69,6 @@ func main() {
 		flag.Parse()
 		upload.Upload(*filename, debug)
 	})
-	
+
 	cli.Run()
 }

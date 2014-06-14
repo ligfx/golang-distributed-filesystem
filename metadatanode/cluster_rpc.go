@@ -24,14 +24,9 @@ func runClusterRPC(c net.Conn, mdn *MetaDataNodeState) {
 			log.Println(err)
 			return
 		}
-		host, _, err := net.SplitHostPort(c.RemoteAddr().String())
-		if err != nil {
-			log.Fatalln("SplitHostPort error:", err)
-		}
-		addr := net.JoinHostPort(host, reg.Port)
-		nodeID := mdn.RegisterDataNode(addr, reg.Blocks)
+		nodeID := mdn.RegisterDataNode(reg.Addr, reg.Blocks)
 		server.Send(&nodeID)
-		log.Println("DataNode '"+string(nodeID)+"' with", len(reg.Blocks), "blocks registered at", addr)
+		log.Println("DataNode '"+string(nodeID)+"' with", len(reg.Blocks), "blocks registered at", reg.Addr)
 
 	case "Heartbeat":
 		var msg HeartbeatMsg

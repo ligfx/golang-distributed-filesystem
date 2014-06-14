@@ -172,19 +172,8 @@ func RunRPC(c net.Conn, dn *DataNodeState) {
 	}
 }
 
-func (self *DataNodeState) RPCServer(port string) {
-	sock, err := net.Listen("tcp", ":"+port)
-	if err != nil {
-		log.Fatalln(err)
-	}
+func (self *DataNodeState) RPCServer(sock net.Listener) {
 	log.Print("Accepting connections on " + sock.Addr().String())
-	_, realPort, err := net.SplitHostPort(sock.Addr().String())
-	if err != nil {
-		log.Fatalln("SplitHostPort error:", err)
-	}
-	// Weird race condition with heartbeat, do this first
-	self.Port = realPort
-
 	for {
 		conn, err := sock.Accept()
 		if err != nil {

@@ -2,12 +2,13 @@
 package datanode
 
 import (
+	"net"
 	"time"
 )
 
 type Config struct {
 	DataDir string
 	Debug bool
-	Port string
+	Listener net.Listener
 	HeartbeatInterval time.Duration
 }

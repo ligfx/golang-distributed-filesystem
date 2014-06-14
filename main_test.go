@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/michaelmaltese/golang-distributed-filesystem/metadatanode"
+	"github.com/michaelmaltese/golang-distributed-filesystem/datanode"
 	"github.com/michaelmaltese/golang-distributed-filesystem/pkg/chanio"
 )
 
@@ -19,5 +20,13 @@ func TestIntegration(*testing.T) {
 		ClusterListener: mdnClusterListener,
 		ReplicationFactor: 2,
 		DatabaseFile: ":memory:",
+		})
+
+	dnListener := network.Listen()
+
+	_, _ = datanode.Create(datanode.Config{
+		Listener: dnListener,
+		DataDir: "_data",
+		HeartbeatInterval: 1,
 		})
 }

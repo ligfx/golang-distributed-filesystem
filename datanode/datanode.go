@@ -24,7 +24,7 @@ type DataNodeState struct {
 	Store             BlockStore
 	Manager           BlockIntents
 	heartbeatInterval time.Duration
-	Port string
+	Addr string
 
 	blocksToDelete chan BlockID
 	deadBlocks     []BlockID
@@ -41,7 +41,8 @@ func Create(conf Config) (*DataNodeState, error) {
 
 	dn.Store.DataDir = conf.DataDir
 	Debug = conf.Debug
-	port := conf.Port
+	dn.Addr = conf.Listener.Addr().String()
+	log.Print(dn.Addr)
 	dn.heartbeatInterval = conf.HeartbeatInterval
 
 	log.Print("Block storage in directory '" + dn.Store.BlocksDirectory() + "'")
@@ -54,7 +55,7 @@ func Create(conf Config) (*DataNodeState, error) {
 		log.Fatal("Making directory:", err)
 	}
 
-	go dn.RPCServer(port)
+	go dn.RPCServer(conf.Listener)
 	go dn.Heartbeat()
 	go dn.IntegrityChecker()
 	go dn.BlockForwarder()
@@ -176,7 +177,7 @@ func tick(dn *DataNodeState) {
 			// Seems hacky
 			dn.Manager.exists[b] = true
 		}
-		err = client.Call("Register", &RegistrationMsg{dn.Port, blocks}, &dn.NodeID)
+		err = client.Call("Register", &RegistrationMsg{dn.Addr, blocks}, &dn.NodeID)
 		if err != nil {
 			log.Println("Registration error:", err)
 			return

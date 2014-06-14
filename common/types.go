@@ -11,7 +11,7 @@ type ForwardBlock struct {
 }
 
 type RegistrationMsg struct {
-	Port   string
+	Addr   string
 	Blocks []BlockID
 }
 
