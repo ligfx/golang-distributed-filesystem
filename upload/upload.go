@@ -2,7 +2,6 @@
 package upload
 
 import (
-	"flag"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -16,22 +15,10 @@ import (
 	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
-func Upload() {
-	var err error
-	var (
-		localFileName = flag.String("file", "", "File to upload")
-		debug         = flag.Bool("debug", false, "Show RPC conversation")
-	)
-	flag.Parse()
+func Upload(localFileName string, debug bool) {
+	localFileName = strings.TrimSpace(localFileName)
 
-	*localFileName = strings.TrimSpace(*localFileName)
-	if len(flag.Args()) != 0 || len(*localFileName) == 0 {
-		fmt.Println("Usage of " + os.Args[0] + ":")
-		flag.PrintDefaults()
-		os.Exit(2)
-	}
-
-	localFileInfo, err := os.Stat(*localFileName)
+	localFileInfo, err := os.Stat(localFileName)
 	if err != nil {
 		log.Fatal("Stat error: ", err)
 	}
@@ -44,7 +31,7 @@ func Upload() {
 	defer conn.Close()
 
 	codec := jsonrpc.NewClientCodec(conn)
-	if *debug {
+	if debug {
 		codec = LoggingClientCodec(
 			conn.RemoteAddr().String(),
 			codec)
@@ -57,7 +44,7 @@ func Upload() {
 		log.Fatal("CreateBlob error:", err)
 	}
 
-	file, err := os.Open(*localFileName)
+	file, err := os.Open(localFileName)
 	if err != nil {
 		log.Fatal("Open error: ", err)
 	}
@@ -89,7 +76,7 @@ func Upload() {
 		defer dataNode.Close()
 
 		dataNodeCodec := jsonrpc.NewClientCodec(dataNode)
-		if *debug {
+		if debug {
 			dataNodeCodec = LoggingClientCodec(
 				dataNode.RemoteAddr().String(),
 				dataNodeCodec)
