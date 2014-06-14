@@ -7,26 +7,7 @@ import (
 	"net"
 )
 
-type SessionState int
-
-const (
-	Start SessionState = iota
-	Creating
-)
-
-var State *MetaDataNodeState
 var Debug bool
-
-func Create(conf Config) (*MetaDataNodeState, error) {
-	// TODO: not global
-	State = NewMetaDataNodeState()
-	State.ReplicationFactor = conf.ReplicationFactor
-	go State.Monitor()
-	go State.ClientRPCServer(conf.ClientListener)
-	go State.ClusterRPCServer(conf.ClusterListener)
-
-	return State, nil
-}
 
 func MetadataNode() {
 	var (

@@ -174,12 +174,14 @@ type MetaDataNodeState struct {
 	ReplicationFactor    int
 }
 
-func NewMetaDataNodeState() *MetaDataNodeState {
-	var self MetaDataNodeState
+func Create(conf Config) (*MetaDataNodeState, error) {
+	self := new(MetaDataNodeState)
+
 	db, err := OpenDB("metadata.db")
 	log.Println("Persistent storage at", "metadata.db")
 	if err != nil {
-		log.Fatalln("Metadata store error:", err)
+		log.Println("Metadata store error:", err)
+		return nil, err
 	}
 	self.store = db
 
@@ -188,7 +190,13 @@ func NewMetaDataNodeState() *MetaDataNodeState {
 	self.dataNodesUtilization = map[NodeID]int{}
 	self.blocks = map[BlockID]map[NodeID]bool{}
 	self.dataNodesBlocks = map[NodeID]map[BlockID]bool{}
-	return &self
+
+	self.ReplicationFactor = conf.ReplicationFactor
+	go self.Monitor()
+	go self.ClientRPCServer(conf.ClientListener)
+	go self.ClusterRPCServer(conf.ClusterListener)
+
+	return self, nil
 }
 
 func (self *MetaDataNodeState) GenerateBlobId() string {
@@ -335,20 +343,27 @@ func (s ByRandom) Less(i, j int) bool {
 	return rand.Intn(2) == 0 // 0 or 1
 }
 
-type ByUtilization []NodeID
+type byFunc struct {
+	f func(NodeID) int
+	list []NodeID
+}
 
-func (s ByUtilization) Len() int {
-	return len(s)
+func (self byFunc) Len() int {
+	return len(self.list)
 }
-func (s ByUtilization) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
+func (self byFunc) Swap(i, j int) {
+	self.list[i], self.list[j] = self.list[j], self.list[i]
 }
-func (s ByUtilization) Less(i, j int) bool {
-	return State.Utilization(s[i]) < State.Utilization(s[j])
+func (self byFunc) Less(i, j int) bool {
+	return self.f(self.list[i]) < self.f(self.list[j])
+}
+
+func ByFunc(f func(NodeID) int, list []NodeID) sort.Interface {
+	return byFunc{f, list}
 }
 
 func (self *MetaDataNodeState) Utilization(n NodeID) int {
-	return State.dataNodesUtilization[n] + State.replicationIntents.Count(n) - State.deletionIntents.Count(n)
+	return self.dataNodesUtilization[n] + self.replicationIntents.Count(n) - self.deletionIntents.Count(n)
 }
 
 // This is not concurrency safe
@@ -359,7 +374,7 @@ func (self *MetaDataNodeState) LeastUsedNodes() []NodeID {
 	}
 
 	sort.Sort(ByRandom(nodes))
-	sort.Stable(ByUtilization(nodes))
+	sort.Stable(ByFunc(self.Utilization, nodes))
 
 	return nodes
 }
@@ -370,7 +385,7 @@ func (self *MetaDataNodeState) MostUsedNodes() []NodeID {
 	}
 
 	sort.Sort(ByRandom(nodes))
-	sort.Stable(sort.Reverse(ByUtilization(nodes)))
+	sort.Stable(sort.Reverse(ByFunc(self.Utilization, nodes)))
 
 	return nodes
 }
@@ -469,9 +484,9 @@ func (self *MetaDataNodeState) Monitor() {
 			moveIntents := map[NodeID]int{}
 			for len(lessThanAverage) != 0 && len(moreThanAverage) != 0 {
 				sort.Sort(ByRandom(lessThanAverage))
-				sort.Stable(ByUtilization(lessThanAverage))
+				sort.Stable(ByFunc(self.Utilization, lessThanAverage))
 				sort.Sort(ByRandom(moreThanAverage))
-				sort.Stable(sort.Reverse(ByUtilization(moreThanAverage)))
+				sort.Stable(sort.Reverse(ByFunc(self.Utilization, moreThanAverage)))
 
 			Nodes:
 				for _, lessNode := range lessThanAverage {
