@@ -1,0 +1,4 @@
+.godeps/
+golang-distributed-filesystem
+_data*
+metadata.db
