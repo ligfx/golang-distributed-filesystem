@@ -12,7 +12,9 @@ import (
 )
 
 // Deals with filesystem
-type BlockStore struct{}
+type BlockStore struct{
+	DataDir string
+}
 
 func (self *BlockStore) BlockSize(block BlockID) (int64, error) {
 	fileInfo, err := os.Stat(self.BlockFilename(block))
@@ -77,7 +79,7 @@ func (self *BlockStore) ReadBlockList() ([]BlockID, error) {
 }
 
 func (self *BlockStore) BlocksDirectory() string {
-	return path.Join(DataDir, "blocks")
+	return path.Join(self.DataDir, "blocks")
 }
 
 func (self *BlockStore) ReadChecksum(block BlockID) (string, error) {
@@ -92,7 +94,7 @@ func (self *BlockStore) WriteChecksum(block BlockID, s string) error {
 }
 
 func (self *BlockStore) MetaDirectory() string {
-	return path.Join(DataDir, "meta")
+	return path.Join(self.DataDir, "meta")
 }
 
 func (self *BlockStore) BlockFilename(block BlockID) string {

@@ -10,12 +10,12 @@ import (
 	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
-func sendBlock(blockID BlockID, peers []string) {
-	if err := State.Manager.LockRead(blockID); err != nil {
+func sendBlock(dn *DataNodeState, blockID BlockID, peers []string) {
+	if err := dn.Manager.LockRead(blockID); err != nil {
 		log.Println("Couldn't lock", blockID)
 		return
 	}
-	defer State.Manager.UnlockRead(blockID)
+	defer dn.Manager.UnlockRead(blockID)
 
 	var peerConn net.Conn
 	var forwardTo []string
@@ -44,7 +44,7 @@ func sendBlock(blockID BlockID, peers []string) {
 	peer := rpc.NewClientWithCodec(peerCodec)
 	defer peer.Close()
 
-	size, err := State.Store.BlockSize(blockID)
+	size, err := dn.Store.BlockSize(blockID)
 	if err != nil {
 		log.Fatal("Stat error: ", err)
 	}
@@ -56,12 +56,12 @@ func sendBlock(blockID BlockID, peers []string) {
 		log.Fatal("Forward error: ", err)
 	}
 
-	err = State.Store.ReadBlock(blockID, peerConn)
+	err = dn.Store.ReadBlock(blockID, peerConn)
 	if err != nil {
 		log.Fatal("Copying error: ", err)
 	}
 
-	hash, err := State.Store.ReadChecksum(blockID)
+	hash, err := dn.Store.ReadChecksum(blockID)
 	if err != nil {
 		log.Fatalln("Reading checksum:", err)
 	}
@@ -71,7 +71,7 @@ func sendBlock(blockID BlockID, peers []string) {
 	}
 }
 
-func RunRPC(c net.Conn, dn DataNodeState) {
+func RunRPC(c net.Conn, dn *DataNodeState) {
 	server := NewRPCServer(c)
 	defer c.Close()
 
@@ -144,10 +144,10 @@ func RunRPC(c net.Conn, dn DataNodeState) {
 		server.SendOkay()
 		dn.Manager.CommitReceive(blockID)
 		// Combine into Block Manager?
-		State.HaveBlocks([]BlockID{blockID})
+		dn.HaveBlocks([]BlockID{blockID})
 		// Pipeline!
 		if len(forwardTo) > 0 {
-			State.forwardingBlocks <- ForwardBlock{blockID, forwardTo, -1}
+			dn.forwardingBlocks <- ForwardBlock{blockID, forwardTo, -1}
 		}
 
 
@@ -183,13 +183,13 @@ func (self *DataNodeState) RPCServer(port string) {
 		log.Fatalln("SplitHostPort error:", err)
 	}
 	// Weird race condition with heartbeat, do this first
-	Port = realPort
+	self.Port = realPort
 
 	for {
 		conn, err := sock.Accept()
 		if err != nil {
 			log.Fatalln(err)
 		}
-		go RunRPC(conn, State)
+		go RunRPC(conn, self)
 	}
 }

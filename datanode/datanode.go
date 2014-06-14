@@ -5,10 +5,15 @@ import (
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"os"
 	"sync"
 	"time"
 
 	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
+)
+
+var (
+	Debug   bool
 )
 
 type DataNodeState struct {
@@ -19,9 +24,42 @@ type DataNodeState struct {
 	Store             BlockStore
 	Manager           BlockIntents
 	heartbeatInterval time.Duration
+	Port string
 
 	blocksToDelete chan BlockID
 	deadBlocks     []BlockID
+}
+
+func Create(conf Config) (*DataNodeState, error) {
+	var dn DataNodeState
+
+	dn.forwardingBlocks = make(chan ForwardBlock)
+	dn.Manager.using = map[BlockID]*sync.WaitGroup{}
+	dn.Manager.receiving = map[BlockID]bool{}
+	dn.Manager.willDelete = map[BlockID]bool{}
+	dn.Manager.exists = map[BlockID]bool{}
+
+	dn.Store.DataDir = conf.DataDir
+	Debug = conf.Debug
+	port := conf.Port
+	dn.heartbeatInterval = conf.HeartbeatInterval
+
+	log.Print("Block storage in directory '" + dn.Store.BlocksDirectory() + "'")
+	if err := os.MkdirAll(dn.Store.BlocksDirectory(), 0777); err != nil {
+		log.Fatal("Making directory:", err)
+	}
+
+	log.Print("Meta storage in directory '" + dn.Store.MetaDirectory() + "'")
+	if err := os.MkdirAll(dn.Store.MetaDirectory(), 0777); err != nil {
+		log.Fatal("Making directory:", err)
+	}
+
+	go dn.RPCServer(port)
+	go dn.Heartbeat()
+	go dn.IntegrityChecker()
+	go dn.BlockForwarder()
+
+	return &dn, nil
 }
 
 func (self *DataNodeState) HaveBlocks(blockIDs []BlockID) {
@@ -64,7 +102,7 @@ func (self *DataNodeState) DrainDeadBlocks() []BlockID {
 
 func (self *DataNodeState) Heartbeat() {
 	for {
-		tick()
+		tick(self)
 		time.Sleep(self.heartbeatInterval)
 	}
 }
@@ -72,7 +110,7 @@ func (self *DataNodeState) Heartbeat() {
 func (self *DataNodeState) BlockForwarder() {
 	for {
 		f := <-self.forwardingBlocks
-		sendBlock(f.BlockID, f.Nodes)
+		sendBlock(self, f.BlockID, f.Nodes)
 	}
 }
 
@@ -82,7 +120,7 @@ func (self *DataNodeState) IntegrityChecker() {
 		log.Println("Checking block integrity...")
 		files, err := self.Store.ReadBlockList()
 		if err != nil {
-			log.Fatal("Reading directory '"+DataDir+"': ", err)
+			log.Fatal("Reading directory '"+self.Store.BlocksDirectory()+"': ", err)
 		}
 		for _, f := range files {
 			if err := self.Manager.LockRead(f); err != nil {
@@ -93,11 +131,11 @@ func (self *DataNodeState) IntegrityChecker() {
 			}
 			storedChecksum, err := self.Store.ReadChecksum(f)
 			if err != nil {
-				go State.RemoveBlock(BlockID(f))
+				go self.RemoveBlock(BlockID(f))
 			}
 			localChecksum, err := self.Store.LocalChecksum(f)
 			if err != nil {
-				go State.RemoveBlock(BlockID(f))
+				go self.RemoveBlock(BlockID(f))
 			}
 
 			if storedChecksum != localChecksum {
@@ -110,12 +148,12 @@ func (self *DataNodeState) IntegrityChecker() {
 	}
 }
 
-func tick() {
+func tick(dn *DataNodeState) {
 	conn, err := net.Dial("tcp", "[::1]:5051")
 	if err != nil {
 		// MetaDataNode offline
 		log.Println("Couldn't connect to leader")
-		State.NodeID = ""
+		dn.NodeID = ""
 		return
 	}
 	codec := jsonrpc.NewClientCodec(conn)
@@ -128,58 +166,58 @@ func tick() {
 	defer client.Close()
 
 	log.Println("Heartbeat...")
-	if len(State.NodeID) == 0 {
+	if len(dn.NodeID) == 0 {
 		log.Println("Re-reading blocklist")
-		blocks, err := State.Store.ReadBlockList()
+		blocks, err := dn.Store.ReadBlockList()
 		if err != nil {
 			log.Fatalln("Getting blocklist:", err)
 		}
 		for _, b := range blocks {
 			// Seems hacky
-			State.Manager.exists[b] = true
+			dn.Manager.exists[b] = true
 		}
-		err = client.Call("Register", &RegistrationMsg{Port, blocks}, &State.NodeID)
+		err = client.Call("Register", &RegistrationMsg{dn.Port, blocks}, &dn.NodeID)
 		if err != nil {
 			log.Println("Registration error:", err)
 			return
 		}
-		log.Println("Registered with ID:", State.NodeID)
+		log.Println("Registered with ID:", dn.NodeID)
 		return
 	}
 
 	// Could be cached so we don't have to hit the filesystem
-	blocks, err := State.Store.ReadBlockList()
+	blocks, err := dn.Store.ReadBlockList()
 	if err != nil {
 		log.Fatalln("Getting utilization:", err)
 	}
 	spaceUsed := len(blocks)
-	newBlocks := State.DrainNewBlocks()
-	deadBlocks := State.DrainDeadBlocks()
+	newBlocks := dn.DrainNewBlocks()
+	deadBlocks := dn.DrainDeadBlocks()
 	var resp HeartbeatResponse
 
 	err = client.Call("Heartbeat",
-		HeartbeatMsg{State.NodeID, spaceUsed, newBlocks, deadBlocks},
+		HeartbeatMsg{dn.NodeID, spaceUsed, newBlocks, deadBlocks},
 		&resp)
 	if err != nil {
 		log.Println("Heartbeat error:", err)
-		State.HaveBlocks(newBlocks)
-		State.DontHaveBlocks(deadBlocks)
+		dn.HaveBlocks(newBlocks)
+		dn.DontHaveBlocks(deadBlocks)
 		return
 	}
 	if resp.NeedToRegister {
 		log.Println("Re-registering with leader...")
-		State.NodeID = ""
-		State.HaveBlocks(newBlocks) // Try again next heartbeat
-		State.DontHaveBlocks(deadBlocks)
+		dn.NodeID = ""
+		dn.HaveBlocks(newBlocks) // Try again next heartbeat
+		dn.DontHaveBlocks(deadBlocks)
 		return
 	}
 	for _, blockID := range resp.InvalidateBlocks {
-		State.RemoveBlock(blockID)
+		dn.RemoveBlock(blockID)
 	}
 	go func() {
 		for _, fwd := range resp.ToReplicate {
 			log.Println("Will replicate '"+string(fwd.BlockID)+"' to", fwd.Nodes)
-			State.forwardingBlocks <- fwd
+			dn.forwardingBlocks <- fwd
 		}
 	}()
 }
