@@ -39,6 +39,11 @@ func (self *RPCServer) Error(s string) error {
 	return self.codec.WriteResponse(&r, nil)
 }
 
+func (self *RPCServer) Unacceptable() error {
+	self.ReadBody(nil)
+	return self.Error("Method not accepted")
+}
+
 func (self *RPCServer) SendOkay() error {
 	var r rpc.Response
 	r.ServiceMethod = self.lastServiceMethod
@@ -47,8 +52,12 @@ func (self *RPCServer) SendOkay() error {
 	return self.codec.WriteResponse(&r, "OK")
 }
 
-func (self *RPCServer) Unacceptable() error {
-	return self.Error("Method not accepted")
+func (self *RPCServer) Send(obj interface{}) error {
+	var r rpc.Response
+	r.ServiceMethod = self.lastServiceMethod
+	r.Seq = self.lastSeq
+	r.Error = ""
+	return self.codec.WriteResponse(&r, obj)
 }
 
 /*

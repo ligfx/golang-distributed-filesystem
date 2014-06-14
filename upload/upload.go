@@ -52,7 +52,7 @@ func Upload() {
 	client := rpc.NewClientWithCodec(codec)
 
 	var blobId string
-	err = client.Call("ClientSession.CreateBlob", nil, &blobId)
+	err = client.Call("CreateBlob", nil, &blobId)
 	if err != nil {
 		log.Fatal("CreateBlob error:", err)
 	}
@@ -66,7 +66,7 @@ func Upload() {
 	bytesLeft := localFileSize
 	for bytesLeft > 0 {
 		var nodesMsg ForwardBlock
-		err = client.Call("ClientSession.Append", nil, &nodesMsg)
+		err = client.Call("Append", nil, &nodesMsg)
 		if err != nil {
 			log.Fatal("Append error:", err)
 		}
@@ -122,7 +122,7 @@ func Upload() {
 		}
 	}
 
-	err = client.Call("ClientSession.Commit", nil, nil)
+	err = client.Call("Commit", nil, nil)
 	if err != nil {
 		log.Fatal("Commit error:", err)
 	}

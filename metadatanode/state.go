@@ -396,23 +396,6 @@ func rpcServer(c net.Conn, debug bool, obj interface{}) {
 	server.ServeCodec(codec)
 }
 
-func (self *MetaDataNodeState) ClientRPC(port string) {
-	clientSock, err := net.Listen("tcp", ":"+port)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Println("Accepting client connections on", clientSock.Addr())
-	for {
-		client, err := clientSock.Accept()
-		if err != nil {
-			log.Fatal(err)
-		}
-		go rpcServer(client,
-			Debug,
-			&ClientSession{Start, State, "", nil, client.RemoteAddr().String()})
-	}
-}
-
 func (self *MetaDataNodeState) PeerRPC(port string) {
 	peerSock, err := net.Listen("tcp", ":"+port)
 	if err != nil {

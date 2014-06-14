@@ -29,6 +29,7 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [x] Remove blocks if checksum doesn't match
 - [ ] Don't need to wait around to delete blocks, just prevent any new reads and we'll come back to them
 - [ ] DataNode should do stuff on startup, and then spawn workers, not just spawn everybody (race conditions with address and data directories)
+- [ ] Allow decommissioning nodes
 - [ ] Structure things better
 - [ ] Support multiple MetaDataNodes somehow (DHT? Raft? Get rid of MetaDataNodes and use Gossip?)
 - [ ] Keep track of MoveIntents (subtract from predicted utilization of node), might fix the volatility when re-balancing

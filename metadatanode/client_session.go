@@ -1,67 +1,92 @@
 package metadatanode
 
 import (
-	"errors"
-	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 	"log"
+	"net"
+
+	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
-type ClientSession struct {
-	state      SessionState
-	server     *MetaDataNodeState
-	blob_id    string
-	blocks     []BlockID
-	remoteAddr string
+func runClientRPC(c net.Conn, mdn *MetaDataNodeState) {
+	server := NewRPCServer(c)
+	defer c.Close()
+
+	var method string
+	method, err := server.ReadHeader()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	switch method {
+	case "CreateBlob":
+		if err := server.ReadBody(nil); err != nil {
+			// TODO: Fatal bc I want to see if passing nil fails
+			log.Fatalln(err)
+			return
+		}
+		blobID := mdn.GenerateBlobId()
+		server.Send(&blobID)
+		var blocks []BlockID
+
+		for {
+			method, err = server.ReadHeader()
+			if err != nil {
+				// TODO: Handle this better: remove blob, blocks?
+				log.Fatalln(err)
+				return
+			}
+			switch method {
+			case "Append":
+				forwardBlock := mdn.GenerateBlock(blobID)
+				blocks = append(blocks, forwardBlock.BlockID)
+				server.Send(&forwardBlock)
+
+			case "Commit":
+				mdn.CommitBlob(blobID, blocks)
+				log.Println("Committed blob '" + blobID + "' for", c.RemoteAddr())
+				server.SendOkay()
+				return
+
+			default:
+				server.Unacceptable()
+			}
+		}
+
+	case "GetBlob":
+		var blobID string
+		if err := server.ReadBody(&blobID); err != nil {
+			log.Println(err)
+			return
+		}
+		blocks := mdn.GetBlob(blobID)
+		server.Send(&blocks)
+
+	case "GetBlock":
+		var blockID BlockID
+		if err := server.ReadBody(&blockID); err != nil {
+			log.Println(err)
+			return
+		}
+		nodes := mdn.GetBlock(blockID)
+		server.Send(&nodes)
+
+	default:
+		server.Unacceptable()
+	}
 }
 
-func (self *ClientSession) CreateBlob(_ *int, ret *string) error {
-	if self.state != Start {
-		return errors.New("Not allowed in current session state")
+
+func (self *MetaDataNodeState) ClientRPC(port string) {
+	clientSock, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	self.blob_id = self.server.GenerateBlobId()
-	self.blocks = []BlockID{}
-	*ret = self.blob_id
-	self.state = Creating
-	return nil
-}
-func (self *ClientSession) Append(_ *int, ret *ForwardBlock) error {
-	if self.state != Creating {
-		return errors.New("Not allowed in current session state")
+	log.Println("Accepting client connections on", clientSock.Addr())
+	for {
+		client, err := clientSock.Accept()
+		if err != nil {
+			log.Fatal(err)
+		}
+		go runClientRPC(client, self)
 	}
-
-	*ret = self.server.GenerateBlock(self.blob_id)
-	self.blocks = append(self.blocks, ret.BlockID)
-	return nil
-}
-
-func (self *ClientSession) Commit(_ *int, _ *int) error {
-	if self.state != Creating {
-		return errors.New("Not allowed in current session state")
-	}
-
-	self.server.CommitBlob(self.blob_id, self.blocks)
-	log.Print("Committed blob '" + self.blob_id + "' for " + self.remoteAddr)
-	self.blob_id = ""
-	self.blocks = nil
-	self.state = Start
-	return nil
-}
-
-func (self *ClientSession) GetBlob(blobId *string, blocks *[]BlockID) error {
-	if self.state != Start {
-		return errors.New("Not allowed in current session state")
-	}
-
-	*blocks = self.server.GetBlob(*blobId)
-	return nil
-}
-
-func (self *ClientSession) GetBlock(blockId *BlockID, nodes *[]string) error {
-	if self.state != Start {
-		return errors.New("Not allowed in current session state")
-	}
-
-	*nodes = self.server.GetBlock(*blockId)
-	return nil
 }
