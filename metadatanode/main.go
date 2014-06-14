@@ -29,7 +29,11 @@ func MetadataNode() {
 		log.Fatal(err)
 	}
 
-	conf := Config{clientListener, clusterListener, *replicationFactor}
+	conf := Config{
+		clientListener,
+		clusterListener,
+		*replicationFactor,
+		"metadata.db"}
 	_, _ = Create(conf)
 	// Let goroutines run forever
 	<- make(chan bool)

@@ -31,8 +31,8 @@ type MetaDataNodeState struct {
 func Create(conf Config) (*MetaDataNodeState, error) {
 	self := new(MetaDataNodeState)
 
-	db, err := OpenDB("metadata.db")
-	log.Println("Persistent storage at", "metadata.db")
+	db, err := OpenDB(conf.DatabaseFile)
+	log.Println("Persistent storage at", conf.DatabaseFile)
 	if err != nil {
 		log.Println("Metadata store error:", err)
 		return nil, err

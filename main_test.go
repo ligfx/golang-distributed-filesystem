@@ -18,5 +18,6 @@ func TestIntegration(*testing.T) {
 		ClientListener: mdnClientListener,
 		ClusterListener: mdnClusterListener,
 		ReplicationFactor: 2,
+		DatabaseFile: ":memory:",
 		})
 }
