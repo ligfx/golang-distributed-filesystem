@@ -36,13 +36,13 @@ func (self *BlockStore) LocalChecksum(block BlockID) (string, error) {
 	return fmt.Sprint(hash.Sum32()), nil
 }
 
-func (self *BlockStore) ReadBlock(block BlockID, size int64, w io.Writer) error {
+func (self *BlockStore) ReadBlock(block BlockID, w io.Writer) error {
 	file, err := os.Open(self.BlockFilename(block))
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-	_, err = io.CopyN(w, file, size)
+	_, err = io.Copy(w, file)
 	if err != nil {
 		return err
 	}

@@ -1,7 +1,6 @@
 package datanode
 
 import (
-	"errors"
 	"log"
 	"net"
 	"net/rpc"
@@ -10,97 +9,6 @@ import (
 
 	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
-
-type RPCState int
-
-const (
-	Start RPCState = iota
-	Done
-	Receiving
-	Giving
-	ReadyToConfirm
-)
-
-type RPC struct {
-	state      RPCState
-	DataNode   DataNodeState
-	connection net.Conn
-	blockId    BlockID
-	forwardTo  []string
-	size       int64
-	checksum   string
-}
-
-func (self *RPC) GetBlock(blockID *BlockID, size *int64) error {
-	if self.state != Start {
-		return errors.New("Not allowed in current state")
-	}
-
-	self.blockId = *blockID
-	self.forwardTo = nil
-	self.state = Giving
-
-	// Should be fine if reading,
-	// fail if uploading or deleting
-	self.DataNode.Manager.LockRead(*blockID)
-
-	return nil
-}
-
-func (self *RPC) ForwardBlock(blockMsg *ForwardBlock, _ *int) error {
-	if self.state != Start {
-		return errors.New("Not allowed in current session state")
-	}
-
-	if blockMsg.Size <= 0 {
-		return errors.New("Bad size")
-	}
-
-	self.blockId = blockMsg.BlockID
-	self.forwardTo = blockMsg.Nodes
-	self.size = blockMsg.Size
-	self.state = Receiving
-
-	// Should blow up if block already exists?
-	self.DataNode.Manager.LockReceive(self.blockId)
-	return nil
-}
-
-func (self *RPC) Confirm(checksum *string, _ *int) error {
-	if self.state != ReadyToConfirm {
-		return errors.New("Not allowed in current session state")
-	}
-	if *checksum != self.checksum {
-		self.DataNode.Manager.AbortReceive(self.blockId)
-		_ = self.DataNode.Store.DeleteBlock(self.blockId)
-		log.Println("Checksum doesn't match for", self.blockId)
-		return errors.New("Checksum doesn't match!")
-	}
-
-	err := self.DataNode.Store.WriteChecksum(self.blockId, *checksum)
-	if err != nil {
-		// TODO: Remove block
-		self.DataNode.Manager.AbortReceive(self.blockId)
-		_ = self.DataNode.Store.DeleteBlock(self.blockId)
-		log.Fatalln("Couldn't write checksum:", err)
-		return errors.New("Couldn't write checksum")
-	}
-
-	self.DataNode.Manager.CommitReceive(self.blockId)
-	// Combine into Block Manager?
-	State.HaveBlocks([]BlockID{self.blockId})
-
-	// Pipeline!
-	if len(self.forwardTo) > 0 {
-		State.forwardingBlocks <- ForwardBlock{self.blockId, self.forwardTo, -1}
-	}
-
-	self.blockId = ""
-	self.size = -1
-	self.state = Done
-	self.checksum = ""
-	return nil
-}
 
 func sendBlock(blockID BlockID, peers []string) {
 	if err := State.Manager.LockRead(blockID); err != nil {
@@ -141,14 +49,14 @@ func sendBlock(blockID BlockID, peers []string) {
 		log.Fatal("Stat error: ", err)
 	}
 
-	err = peer.Call("RPC.ForwardBlock",
+	err = peer.Call("Forward",
 		&ForwardBlock{blockID, forwardTo, size},
 		nil)
 	if err != nil {
-		log.Fatal("ForwardBlock error: ", err)
+		log.Fatal("Forward error: ", err)
 	}
 
-	err = State.Store.ReadBlock(blockID, size, peerConn)
+	err = State.Store.ReadBlock(blockID, peerConn)
 	if err != nil {
 		log.Fatal("Copying error: ", err)
 	}
@@ -157,56 +65,131 @@ func sendBlock(blockID BlockID, peers []string) {
 	if err != nil {
 		log.Fatalln("Reading checksum:", err)
 	}
-	err = peer.Call("RPC.Confirm", hash, nil)
+	err = peer.Call("Confirm", hash, nil)
 	if err != nil {
 		log.Fatal("Confirm error: ", err)
 	}
 }
 
-func (self *RPC) receiveBlock() {
-	checksum, err := self.DataNode.Store.WriteBlock(self.blockId, self.size, self.connection)
-	if err != nil {
-		log.Fatal("Writing block:", err)
-	}
-	log.Println("Received block '"+string(self.blockId)+"' from", self.connection.RemoteAddr())
-	self.checksum = checksum
-	self.state = ReadyToConfirm
-}
-
-func (self *RPC) giveBlock() {
-	size, err := self.DataNode.Store.BlockSize(self.blockId)
-	if err != nil {
-		log.Fatalln("Getting block size:", err)
-	}
-	err = self.DataNode.Store.ReadBlock(self.blockId, size, self.connection)
-	if err != nil {
-		log.Fatalln("Copying error: ", err)
-	}
-	self.DataNode.Manager.UnlockRead(self.blockId)
-	self.state = Done
-}
-
 func RunRPC(c net.Conn, dn DataNodeState) {
-	server := rpc.NewServer()
-	session := &RPC{Start, State, c, "", nil, -1, ""}
-	server.Register(session)
-	codec := jsonrpc.NewServerCodec(c)
-	if Debug {
-		codec = LoggingServerCodec(
-			c.RemoteAddr().String(),
-			codec)
+	server := NewRPCServer(c)
+	defer c.Close()
+
+	var method string
+	method, err := server.ReadHeader()
+	if err != nil {
+		log.Println(err)
+		return
 	}
+	switch method {
+	case "Forward":
+		var blockMsg ForwardBlock
+		if err := server.ReadBody(&blockMsg); err != nil {
+			log.Println(err)
+			return
+		}
+		blockID := blockMsg.BlockID
+		size := blockMsg.Size
+		forwardTo := blockMsg.Nodes
+		if size <= 0 {
+			server.Error("Size must be >0")
+			return
+		}
+		dn.Manager.LockReceive(blockID)
+		server.SendOkay()
+
+		localChecksum, err := dn.Store.WriteBlock(
+			blockID,
+			size,
+			c)
+		if err != nil {
+			log.Println("Writing block:", err)
+			server.Error("Writing block")
+			return
+		}
+		log.Println("Received block '"+string(blockID)+"' from", c.RemoteAddr())
+
+		method, err = server.ReadHeader(); if err != nil {
+			log.Println(err)
+			dn.Manager.AbortReceive(blockID)
+			dn.Store.DeleteBlock(blockID)
+			return
+		}
+		if method != "Confirm" {
+			server.Unacceptable()
+			dn.Manager.AbortReceive(blockID)
+			dn.Store.DeleteBlock(blockID)
+			return
+		}
+		var remoteChecksum string
+		if err := server.ReadBody(&remoteChecksum); err != nil {
+			dn.Manager.AbortReceive(blockID)
+			dn.Store.DeleteBlock(blockID)
+			return
+		}
+		if remoteChecksum != localChecksum {
+			dn.Manager.AbortReceive(blockID)
+			dn.Store.DeleteBlock(blockID)
+			log.Println("Checksum doesn't match for", blockID)
+			server.Error("Checksum doesn't match")
+			return
+		}
+		if err := dn.Store.WriteChecksum(blockID, remoteChecksum); err != nil {
+			dn.Manager.AbortReceive(blockID)
+			dn.Store.DeleteBlock(blockID)
+			log.Fatalln("Couldn't write checksum:", err)
+			server.Error("Couldn't write checksum")
+			return
+		}
+		server.SendOkay()
+		dn.Manager.CommitReceive(blockID)
+		// Combine into Block Manager?
+		State.HaveBlocks([]BlockID{blockID})
+		// Pipeline!
+		if len(forwardTo) > 0 {
+			State.forwardingBlocks <- ForwardBlock{blockID, forwardTo, -1}
+		}
+
+
+	case "Get":
+		var blockID BlockID
+		if err := server.ReadBody(&blockID); err != nil {
+			log.Println(err)
+			return
+		}
+		if err := dn.Manager.LockRead(blockID); err != nil {
+			server.Error("Couldn't get read lock")
+			return
+		}
+		defer dn.Manager.UnlockRead(blockID)
+		server.SendOkay()
+		if err := dn.Store.ReadBlock(blockID, c); err != nil {
+			log.Fatalln("Copying error: ", err)
+		}
+
+	default:
+		server.Unacceptable()
+	}
+}
+
+func (self *DataNodeState) RPCServer(port string) {
+	sock, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	log.Print("Accepting connections on " + sock.Addr().String())
+	_, realPort, err := net.SplitHostPort(sock.Addr().String())
+	if err != nil {
+		log.Fatalln("SplitHostPort error:", err)
+	}
+	// Weird race condition with heartbeat, do this first
+	Port = realPort
 
 	for {
-		switch session.state {
-		default:
-			server.ServeRequest(codec)
-		case Done:
-			return
-		case Receiving:
-			session.receiveBlock()
-		case Giving:
-			session.giveBlock()
+		conn, err := sock.Accept()
+		if err != nil {
+			log.Fatalln(err)
 		}
+		go RunRPC(conn, State)
 	}
 }

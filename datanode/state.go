@@ -76,28 +76,6 @@ func (self *DataNodeState) BlockForwarder() {
 	}
 }
 
-func (self *DataNodeState) RPCServer(port string) {
-	sock, err := net.Listen("tcp", ":"+port)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	log.Print("Accepting connections on " + sock.Addr().String())
-	_, realPort, err := net.SplitHostPort(sock.Addr().String())
-	if err != nil {
-		log.Fatalln("SplitHostPort error:", err)
-	}
-	// Weird race condition with heartbeat, do this first
-	Port = realPort
-
-	for {
-		conn, err := sock.Accept()
-		if err != nil {
-			log.Fatalln(err)
-		}
-		go RunRPC(conn, State)
-	}
-}
-
 func (self *DataNodeState) IntegrityChecker() {
 	for {
 		time.Sleep(5 * time.Second)
