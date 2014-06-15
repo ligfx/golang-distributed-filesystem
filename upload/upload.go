@@ -15,10 +15,8 @@ import (
 	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
-func Upload(localFileName string, debug bool) {
-	localFileName = strings.TrimSpace(localFileName)
-
-	localFileInfo, err := os.Stat(localFileName)
+func Upload(file *os.File, debug bool) {
+	localFileInfo, err := file.Stat()
 	if err != nil {
 		log.Fatal("Stat error: ", err)
 	}
@@ -43,12 +41,6 @@ func Upload(localFileName string, debug bool) {
 	if err != nil {
 		log.Fatal("CreateBlob error:", err)
 	}
-
-	file, err := os.Open(localFileName)
-	if err != nil {
-		log.Fatal("Open error: ", err)
-	}
-	defer file.Close()
 
 	bytesLeft := localFileSize
 	for bytesLeft > 0 {

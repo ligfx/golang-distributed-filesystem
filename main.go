@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"os"
 	"time"
 
 	"github.com/michaelmaltese/golang-distributed-filesystem/pkg/command"
@@ -27,6 +28,7 @@ func main() {
 	cli.Command("datanode", "Run storage node", func(flag command.Flags) {
 		port := flag.Int("port", 0, "")
 		dataDir := flag.String("dataDir", "_data", "")
+		leaderAddress := flag.String("leaderPort", ":5051", "")
 		heartbeatInterval := flag.Duration("heartbeatInterval", 3*time.Second, "")
 		flag.Parse()
 
@@ -34,10 +36,12 @@ func main() {
 			log.Fatal(err) }
 
 		conf := datanode.Config{
-			*dataDir,
-			debug,
-			listener,
-			*heartbeatInterval}
+			DataDir: *dataDir,
+			Debug: debug,
+			Listener: listener,
+			HeartbeatInterval: *heartbeatInterval,
+			LeaderAddress: *leaderAddress,
+			Network: new(datanode.TCPNetwork)}
 		datanode.Create(conf)
 		// Wait on goroutines
 		<- make(chan bool)
@@ -67,7 +71,11 @@ func main() {
 	cli.Command("upload", "Upload a file", func(flag command.Flags) {
 		filename := flag.String("file", "", "")
 		flag.Parse()
-		upload.Upload(*filename, debug)
+
+		file, err := os.Open(*filename); if err != nil {
+			log.Fatal(err)
+		}
+		upload.Upload(file, debug)
 	})
 
 	cli.Run()

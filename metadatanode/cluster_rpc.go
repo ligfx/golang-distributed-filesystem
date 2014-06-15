@@ -61,7 +61,9 @@ func runClusterRPC(c net.Conn, mdn *MetaDataNodeState) {
 			}
 			resp.ToReplicate = append(resp.ToReplicate, ForwardBlock{block, addrs, -1})
 		}
-		server.Send(&resp)
+		if err := server.Send(&resp); err != nil {
+			log.Fatalln(err)
+		}
 
 	default:
 		server.Unacceptable()

@@ -2,6 +2,7 @@ package common
 
 import (
 	"io"
+
 	"net/rpc"
 	"net/rpc/jsonrpc"
 )
@@ -57,5 +58,6 @@ func (self *RPCServer) Send(obj interface{}) error {
 	r.ServiceMethod = self.lastServiceMethod
 	r.Seq = self.lastSeq
 	r.Error = ""
-	return self.codec.WriteResponse(&r, obj)
+	err := self.codec.WriteResponse(&r, obj)
+	return err
 }

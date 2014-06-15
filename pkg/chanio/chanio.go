@@ -26,7 +26,7 @@ func (self *Network) Listen() net.Listener {
 	defer self.lock.Unlock()
 	addr := fmt.Sprintf("%s:%d", networkName, self.sockID)
 	self.sockID++
-	c := make(chan ChanConn)
+	c := make(chan *ChanConn, 10)
 	listener := &ChanListener{self, addr, c}
 	self.listeners[addr] = listener
 	return listener
@@ -41,14 +41,14 @@ func (self *Network) Dial(addr string) (net.Conn, error) {
 	}
 	clientAddr := fmt.Sprintf("%s:%d", networkName, self.sockID)
 	self.sockID++
-	clientToServer := make(chan []byte)
-	ServerToClient := make(chan []byte)
-	client := ChanConn{ServerToClient,
+	clientToServer := make(chan []byte, 10)
+	ServerToClient := make(chan []byte, 10)
+	client := &ChanConn{ServerToClient,
 		clientToServer,
 		bytes.Buffer{},
 		ChanAddr{clientAddr},
 		ChanAddr{addr}}
-	server := ChanConn{clientToServer,
+	server := &ChanConn{clientToServer,
 		ServerToClient,
 		bytes.Buffer{},
 		ChanAddr{addr},
@@ -62,12 +62,12 @@ func (self *Network) Dial(addr string) (net.Conn, error) {
 type ChanListener struct {
 	network *Network
 	addr string
-	incoming chan ChanConn
+	incoming chan *ChanConn
 }
 
 type ChanConn struct {
-	read <- chan []byte
-	write chan []byte
+	read  <-chan []byte
+	write chan<- []byte
 	readBuf bytes.Buffer
 	localAddr ChanAddr
 	remoteAddr ChanAddr
@@ -100,12 +100,14 @@ func (self *ChanListener) Addr() net.Addr {
 	return &ChanAddr{self.addr}
 }
 
-func (self ChanConn) Read(b []byte) (int, error) {
+func (self *ChanConn) Read(b []byte) (int, error) {
 	if self.readBuf.Len() > 0 {
 		return self.readBuf.Read(b)
 	}
-
-	bytes := <- self.read
+	bytes, stillOpen := <- self.read
+	if ! stillOpen {
+		return 0, errors.New("Closed")
+	}
 	n := copy(b, bytes)
 	if n > len(b) {
 		self.readBuf.Write(bytes[n:])
@@ -113,32 +115,32 @@ func (self ChanConn) Read(b []byte) (int, error) {
 	return n, nil
 }
 
-func (self ChanConn) Write(b []byte) (int, error) {
+func (self *ChanConn) Write(b []byte) (int, error) {
 	self.write <- b
 	return len(b), nil
 }
 
-func (self ChanConn) Close() error {
+func (self *ChanConn) Close() error {
 	close(self.write)
 	return nil
 }
 
-func (self ChanConn) LocalAddr() net.Addr {
+func (self *ChanConn) LocalAddr() net.Addr {
 	return self.localAddr
 }
 
-func (self ChanConn) RemoteAddr() net.Addr {
+func (self *ChanConn) RemoteAddr() net.Addr {
 	return self.remoteAddr
 }
 
-func (self ChanConn) SetDeadline(t time.Time) error {
+func (self *ChanConn) SetDeadline(t time.Time) error {
 	panic("Not implemented")
 }
 
-func (self ChanConn) SetReadDeadline(t time.Time) error {
+func (self *ChanConn) SetReadDeadline(t time.Time) error {
 	panic("Not implemented")
 }
 
-func (self ChanConn) SetWriteDeadline(t time.Time) error {
+func (self *ChanConn) SetWriteDeadline(t time.Time) error {
 	panic("Not implemented")
 }

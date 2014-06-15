@@ -3,6 +3,7 @@ package metadatanode
 import (
 	"bytes"
 	"crypto/sha1"
+	"fmt"
 	"log"
 	"sort"
 	"strings"
@@ -359,6 +360,7 @@ func (self *MetaDataNodeState) Monitor() {
 
 		self.mutex.Unlock()
 
+		fmt.Println("Sleeping for 3 seconds")
 		time.Sleep(3 * time.Second)
 	}
 }
