@@ -8,8 +8,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/michaelmaltese/golang-distributed-filesystem/common"
-
 	"github.com/michaelmaltese/golang-distributed-filesystem/pkg/command"
 
 	"github.com/michaelmaltese/golang-distributed-filesystem/datanode"
@@ -42,8 +40,7 @@ func main() {
 			Debug: debug,
 			Listener: listener,
 			HeartbeatInterval: *heartbeatInterval,
-			LeaderAddress: *leaderAddress,
-			Network: new(common.TCPNetwork)}
+			LeaderAddress: *leaderAddress}
 		datanode.Create(conf)
 		// Wait on goroutines
 		<- make(chan bool)
@@ -78,7 +75,7 @@ func main() {
 		file, err := os.Open(*filename); if err != nil {
 			log.Fatal(err)
 		}
-		upload.Upload(file, debug, new(common.TCPNetwork), *leaderAddress)
+		upload.Upload(file, debug, *leaderAddress)
 	})
 
 	cli.Run()

@@ -33,6 +33,7 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [ ] Better configuration handling (defaults)
 - [ ] Events from servers for testing
 - [ ] Allow decommissioning nodes
+- [ ] Better logging, so warnings normally can be fatal for tests
 - [ ] Command line parser doesn't work that well (try "main datanode -help")
 - [ ] Don't need to wait around to delete blocks, just prevent any new reads and we'll come back to them
 - [ ] DataNode should do stuff on startup, and then spawn workers, not just spawn everybody (race conditions with address and data directories)

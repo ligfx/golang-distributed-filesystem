@@ -22,7 +22,7 @@ func sendBlock(dn *DataNodeState, blockID BlockID, peers []string) {
 	var err error
 	// Find an online peer
 	for i, addr := range peers {
-		peerConn, err = dn.network.Dial(addr)
+		peerConn, err = net.Dial("tcp", addr)
 		if err == nil {
 			forwardTo = append(peers[:i], peers[i+1:]...)
 			break

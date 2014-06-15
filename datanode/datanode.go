@@ -2,6 +2,7 @@ package datanode
 
 import (
 	"log"
+	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
@@ -25,7 +26,6 @@ type DataNodeState struct {
 	heartbeatInterval time.Duration
 	Addr string
 	LeaderAddress string
-	network NetworkAdapter
 
 	blocksToDelete chan BlockID
 	deadBlocks     []BlockID
@@ -46,7 +46,6 @@ func Create(conf Config) (*DataNodeState, error) {
 	dn.Addr = conf.Listener.Addr().String()
 	dn.heartbeatInterval = conf.HeartbeatInterval
 	dn.LeaderAddress = conf.LeaderAddress
-	dn.network = conf.Network
 
 	log.Print("Block storage in directory '" + dn.Store.BlocksDirectory() + "'")
 	if err := os.MkdirAll(dn.Store.BlocksDirectory(), 0777); err != nil {
@@ -153,9 +152,9 @@ func (self *DataNodeState) IntegrityChecker() {
 }
 
 func tick(dn *DataNodeState) {
-	conn, err := dn.network.Dial(dn.LeaderAddress)
+	conn, err := net.Dial("tcp", dn.LeaderAddress)
 	if err != nil {
-		log.Println("Couldn't connect to leader")
+		log.Println("Couldn't connect to leader at", dn.LeaderAddress)
 		dn.NodeID = ""
 		return
 	}

@@ -15,14 +15,14 @@ import (
 	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
-func Upload(file *os.File, debug bool, network NetworkAdapter, leaderAddress string) {
+func Upload(file *os.File, debug bool, leaderAddress string) {
 	localFileInfo, err := file.Stat()
 	if err != nil {
 		log.Fatal("Stat error: ", err)
 	}
 	localFileSize := localFileInfo.Size()
 
-	conn, err := network.Dial(leaderAddress)
+	conn, err := net.Dial("tcp", leaderAddress)
 	if err != nil {
 		log.Fatal("Dial error:", err)
 	}
@@ -56,7 +56,7 @@ func Upload(file *os.File, debug bool, network NetworkAdapter, leaderAddress str
 		var forwardTo []string
 		// Find a DataNode
 		for i, addr := range nodesMsg.Nodes {
-			dataNode, err = network.Dial(addr)
+			dataNode, err = net.Dial("tcp", addr)
 			if err == nil {
 				forwardTo = append(nodesMsg.Nodes[:i], nodesMsg.Nodes[i+1:]...)
 				break
