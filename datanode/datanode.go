@@ -83,7 +83,7 @@ func (self *DataNodeState) RemoveBlock(block BlockID) {
 	defer self.Manager.CommitDelete(block)
 	log.Println("Removing block '" + block + "'")
 	if err := self.Store.DeleteBlock(block); err != nil {
-		log.Fatalln("Deleting block", block, "->", err)
+		log.Println("Deleting block", block, "->", err)
 	}
 	self.DontHaveBlocks([]BlockID{block})
 }

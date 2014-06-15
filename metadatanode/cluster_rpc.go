@@ -66,6 +66,7 @@ func runClusterRPC(c net.Conn, mdn *MetaDataNodeState) {
 		}
 
 	default:
+		log.Println("Unacceptable:", method)
 		server.Unacceptable()
 	}
 }

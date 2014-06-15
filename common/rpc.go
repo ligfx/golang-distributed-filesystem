@@ -2,6 +2,7 @@ package common
 
 import (
 	"io"
+	"log"
 
 	"net/rpc"
 	"net/rpc/jsonrpc"
@@ -41,6 +42,7 @@ func (self *RPCServer) Error(s string) error {
 }
 
 func (self *RPCServer) Unacceptable() error {
+	log.Println("Unacceptable")
 	self.ReadBody(nil)
 	return self.Error("Method not accepted")
 }	

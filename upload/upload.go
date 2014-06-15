@@ -15,19 +15,18 @@ import (
 	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
-func Upload(file *os.File, debug bool) {
+func Upload(file *os.File, debug bool, network NetworkAdapter, leaderAddress string) {
 	localFileInfo, err := file.Stat()
 	if err != nil {
 		log.Fatal("Stat error: ", err)
 	}
 	localFileSize := localFileInfo.Size()
 
-	conn, err := net.Dial("tcp", "[::1]:5050")
+	conn, err := network.Dial(leaderAddress)
 	if err != nil {
 		log.Fatal("Dial error:", err)
 	}
 	defer conn.Close()
-
 	codec := jsonrpc.NewClientCodec(conn)
 	if debug {
 		codec = LoggingClientCodec(
@@ -39,8 +38,10 @@ func Upload(file *os.File, debug bool) {
 	var blobId string
 	err = client.Call("CreateBlob", nil, &blobId)
 	if err != nil {
-		log.Fatal("CreateBlob error:", err)
+		panic(err)
+		log.Fatalln("CreateBlob error:", err)
 	}
+	log.Println(err)
 
 	bytesLeft := localFileSize
 	for bytesLeft > 0 {
@@ -55,13 +56,14 @@ func Upload(file *os.File, debug bool) {
 		var forwardTo []string
 		// Find a DataNode
 		for i, addr := range nodesMsg.Nodes {
-			dataNode, err = net.Dial("tcp", addr)
+			dataNode, err = network.Dial(addr)
 			if err == nil {
 				forwardTo = append(nodesMsg.Nodes[:i], nodesMsg.Nodes[i+1:]...)
 				break
 			}
 			dataNode = nil
 		}
+		// TODO: Can't compare an interface to nil
 		if dataNode == nil {
 			log.Fatalln("Couldn't connect to any DataNodes in:", strings.Join(nodesMsg.Nodes, " "))
 		}

@@ -26,7 +26,7 @@ func (self *Network) Listen() net.Listener {
 	defer self.lock.Unlock()
 	addr := fmt.Sprintf("%s:%d", networkName, self.sockID)
 	self.sockID++
-	c := make(chan *ChanConn, 10)
+	c := make(chan *ChanConn)
 	listener := &ChanListener{self, addr, c}
 	self.listeners[addr] = listener
 	return listener
@@ -41,21 +41,19 @@ func (self *Network) Dial(addr string) (net.Conn, error) {
 	}
 	clientAddr := fmt.Sprintf("%s:%d", networkName, self.sockID)
 	self.sockID++
-	clientToServer := make(chan []byte, 10)
-	ServerToClient := make(chan []byte, 10)
-	client := &ChanConn{ServerToClient,
+	clientToServer := make(chan []byte)
+	serverToClient := make(chan []byte)
+	client := &ChanConn{serverToClient,
 		clientToServer,
 		bytes.Buffer{},
 		ChanAddr{clientAddr},
 		ChanAddr{addr}}
 	server := &ChanConn{clientToServer,
-		ServerToClient,
+		serverToClient,
 		bytes.Buffer{},
 		ChanAddr{addr},
 		ChanAddr{clientAddr}}
-	go func() {
-		listener.incoming <- server
-	}()
+	listener.incoming <- server
 	return client, nil
 }
 
@@ -109,7 +107,7 @@ func (self *ChanConn) Read(b []byte) (int, error) {
 		return 0, errors.New("Closed")
 	}
 	n := copy(b, bytes)
-	if n > len(b) {
+	if n < len(bytes) {
 		self.readBuf.Write(bytes[n:])
 	}
 	return n, nil

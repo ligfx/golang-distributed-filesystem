@@ -4,22 +4,15 @@ package datanode
 import (
 	"net"
 	"time"
+
+	"github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
 type Config struct {
 	DataDir string
 	Debug bool
 	Listener net.Listener
-	Network NetworkAdapter
+	Network common.NetworkAdapter
 	HeartbeatInterval time.Duration
 	LeaderAddress string
-}
-
-type NetworkAdapter interface {
-	Dial(string) (net.Conn, error)
-}
-
-type TCPNetwork struct {}
-func (*TCPNetwork) Dial(addr string) (net.Conn, error) {
-	return net.Dial("tcp", addr)
 }

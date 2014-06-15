@@ -71,6 +71,7 @@ func runClientRPC(c net.Conn, mdn *MetaDataNodeState) {
 		server.Send(&nodes)
 
 	default:
+		log.Println("Unacceptable:", method)
 		server.Unacceptable()
 	}
 }

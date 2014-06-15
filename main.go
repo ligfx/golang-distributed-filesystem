@@ -8,6 +8,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/michaelmaltese/golang-distributed-filesystem/common"
+
 	"github.com/michaelmaltese/golang-distributed-filesystem/pkg/command"
 
 	"github.com/michaelmaltese/golang-distributed-filesystem/datanode"
@@ -28,7 +30,7 @@ func main() {
 	cli.Command("datanode", "Run storage node", func(flag command.Flags) {
 		port := flag.Int("port", 0, "")
 		dataDir := flag.String("dataDir", "_data", "")
-		leaderAddress := flag.String("leaderPort", ":5051", "")
+		leaderAddress := flag.String("leaderAddress", "[::1]:5051", "")
 		heartbeatInterval := flag.Duration("heartbeatInterval", 3*time.Second, "")
 		flag.Parse()
 
@@ -41,15 +43,15 @@ func main() {
 			Listener: listener,
 			HeartbeatInterval: *heartbeatInterval,
 			LeaderAddress: *leaderAddress,
-			Network: new(datanode.TCPNetwork)}
+			Network: new(common.TCPNetwork)}
 		datanode.Create(conf)
 		// Wait on goroutines
 		<- make(chan bool)
 	})
 
 	cli.Command("metadatanode", "Run leader", func(flag command.Flags) {
-		clientPort := flag.Int("clientport", 5050, "")
-		peerPort   := flag.Int("peerport", 5051, "")
+		clientPort := flag.Int("clientListen", 5050, "")
+		peerPort   := flag.Int("peerListen", 5051, "")
 		replicationFactor := flag.Int("replicationFactor", 2, "")
 		flag.Parse()
 
@@ -70,12 +72,13 @@ func main() {
 
 	cli.Command("upload", "Upload a file", func(flag command.Flags) {
 		filename := flag.String("file", "", "")
+		leaderAddress := flag.String("leaderAddress", "[::1]:5050", "")
 		flag.Parse()
 
 		file, err := os.Open(*filename); if err != nil {
 			log.Fatal(err)
 		}
-		upload.Upload(file, debug)
+		upload.Upload(file, debug, new(common.TCPNetwork), *leaderAddress)
 	})
 
 	cli.Run()

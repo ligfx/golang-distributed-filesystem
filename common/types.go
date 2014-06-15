@@ -1,6 +1,10 @@
 // Network protocol and other communications issues.
 package common
 
+import (
+	"net"
+)
+
 type BlockID string
 type NodeID string
 
@@ -26,4 +30,15 @@ type HeartbeatResponse struct {
 	NeedToRegister   bool
 	InvalidateBlocks []BlockID
 	ToReplicate      []ForwardBlock
+}
+
+//
+
+type NetworkAdapter interface {
+	Dial(string) (net.Conn, error)
+}
+
+type TCPNetwork struct {}
+func (*TCPNetwork) Dial(addr string) (net.Conn, error) {
+	return net.Dial("tcp", addr)
 }
