@@ -2,6 +2,7 @@ package metadatanode
 
 import (
 	"database/sql"
+	"log"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -15,8 +16,9 @@ func OpenDB(filename string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Will fail if already exists?
-	_, _ = conn.Exec("CREATE TABLE file_blocks(blob, block)")
+	if _ , err := conn.Exec("CREATE TABLE file_blocks(blob, block)"); err != nil {
+		log.Fatalln(err)
+	}
 	return &DB{conn}, err
 }
 
@@ -28,10 +30,10 @@ func (self *DB) Append(key, value string) error {
 
 func (self *DB) Get(key string) ([]string, error) {
 	rows, err := self.conn.Query("SELECT block FROM file_blocks WHERE blob=?", key)
-	defer rows.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	var blocks []string
 	for rows.Next() {
 		var b string

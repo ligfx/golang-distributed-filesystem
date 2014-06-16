@@ -15,7 +15,7 @@ import (
 	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
 
-func Upload(file *os.File, debug bool, leaderAddress string) {
+func Upload(file *os.File, debug bool, leaderAddress string) string {
 	localFileInfo, err := file.Stat()
 	if err != nil {
 		log.Fatal("Stat error: ", err)
@@ -107,4 +107,6 @@ func Upload(file *os.File, debug bool, leaderAddress string) {
 		log.Fatal("Commit error:", err)
 	}
 	fmt.Println("Blob ID:", blobId)
+
+	return blobId
 }
