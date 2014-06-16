@@ -1,11 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"math/rand"
-	"net"
-	"os"
 	"time"
 
 	"github.com/michaelmaltese/golang-distributed-filesystem/pkg/command"
@@ -26,19 +23,16 @@ func main() {
 	})
 
 	cli.Command("datanode", "Run storage node", func(flag command.Flags) {
-		port := flag.Int("port", 0, "")
+		listener := command.ListenerFlag(flag, "port", 0, "")
 		dataDir := flag.String("dataDir", "_data", "")
 		leaderAddress := flag.String("leaderAddress", "[::1]:5051", "")
 		heartbeatInterval := flag.Duration("heartbeatInterval", 3*time.Second, "")
 		flag.Parse()
 
-		listener, err := net.Listen("tcp", ":"+fmt.Sprintf("%d", *port)); if err != nil {
-			log.Fatal(err) }
-
 		conf := datanode.Config{
 			DataDir: *dataDir,
 			Debug: debug,
-			Listener: listener,
+			Listener: listener.Get(),
 			HeartbeatInterval: *heartbeatInterval,
 			LeaderAddress: *leaderAddress}
 		datanode.Create(conf)
@@ -47,19 +41,15 @@ func main() {
 	})
 
 	cli.Command("metadatanode", "Run leader", func(flag command.Flags) {
-		clientPort := flag.Int("clientListen", 5050, "")
-		peerPort   := flag.Int("peerListen", 5051, "")
+		clientListener := command.ListenerFlag(flag, "clientPort", 5050, "")
+		clusterListener := command.ListenerFlag(flag, "clusterPort", 5051, "")
 		replicationFactor := flag.Int("replicationFactor", 2, "")
 		flag.Parse()
 
 		log.Println("Replication factor of", *replicationFactor)
-		clientListener, err := net.Listen("tcp", ":"+fmt.Sprintf("%d", *clientPort)); if err != nil {
-			log.Fatal(err) }
-		clusterListener, err := net.Listen("tcp", ":"+fmt.Sprintf("%d", *peerPort)); if err != nil {
-			log.Fatal(err) }
 		conf := metadatanode.Config{
-			clientListener,
-			clusterListener,
+			clientListener.Get(),
+			clusterListener.Get(),
 			*replicationFactor,
 			"metadata.db"}
 		metadatanode.Create(conf)
@@ -68,14 +58,11 @@ func main() {
 	})
 
 	cli.Command("upload", "Upload a file", func(flag command.Flags) {
-		filename := flag.String("file", "", "")
+		file := command.FileFlag(flag, "file", "")
 		leaderAddress := flag.String("leaderAddress", "[::1]:5050", "")
 		flag.Parse()
 
-		file, err := os.Open(*filename); if err != nil {
-			log.Fatal(err)
-		}
-		upload.Upload(file, debug, *leaderAddress)
+		upload.Upload(file.Get(), debug, *leaderAddress)
 	})
 
 	cli.Run()

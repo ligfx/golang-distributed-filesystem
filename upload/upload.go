@@ -41,7 +41,6 @@ func Upload(file *os.File, debug bool, leaderAddress string) {
 		panic(err)
 		log.Fatalln("CreateBlob error:", err)
 	}
-	log.Println(err)
 
 	bytesLeft := localFileSize
 	for bytesLeft > 0 {

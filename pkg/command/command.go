@@ -1,4 +1,4 @@
-// Replace with https://github.com/codegangsta/cli and https://github.com/dotcloud/docker/pkg/mflag
+// This would be easier with FlagSet.VisitAll
 package command
 
 import (
@@ -28,6 +28,7 @@ type Flags interface {
 	String(string, string, string) *string
 	Duration(string, time.Duration, string) *time.Duration
 	Parse()
+	Var(goflag.Value, string, string)
 	Int(string, int, string) *int
 }
 
@@ -40,7 +41,9 @@ type AppConfig struct {
 }
 
 func App() *AppConfig {
-	return new(AppConfig)
+	self := new(AppConfig)
+	self.Command("help", "Show this message", func(f Flags) { f.Parse(); self.Usage() })
+	return self
 }
 
 type flagDummy struct {
@@ -63,11 +66,14 @@ func (self *flagDummy) String(name string, value string, usage string) *string {
 	*self.list = append(*self.list, flag)
 	return nil
 }
-
 func (self *flagDummy) Int(name string, value int, usage string) *int {
 	flag := flag{name, fmt.Sprintf("%+v", value), usage}
 	*self.list = append(*self.list, flag)
 	return nil
+}
+func (self *flagDummy) Var(value goflag.Value, name string, usage string) {
+	flag := flag{name, value.String(), usage}
+	*self.list = append(*self.list, flag)
 }
 
 type doneTracing struct {}
@@ -85,7 +91,6 @@ func (self *AppConfig) Global(f func(Flags)) {
 	}
 	self.global = f
 	f(&flagDummy{&self.globalFlags})
-	(&flagDummy{&self.globalFlags}).BoolVar(nil, "help", false, "")
 }
 
 func (self *AppConfig) Command(name string, description string, f func(Flags)) {
@@ -107,10 +112,11 @@ func (self *AppConfig) Command(name string, description string, f func(Flags)) {
 
 type flagSet struct {
 	*goflag.FlagSet
+	app *AppConfig
 }
 
-func newFlagSet() *flagSet {
-	return &flagSet{goflag.NewFlagSet("", goflag.ContinueOnError)}
+func newFlagSet(app *AppConfig) *flagSet {
+	return &flagSet{goflag.NewFlagSet("", goflag.ContinueOnError), app}
 }
 
 type flagSetFailure struct {
@@ -119,7 +125,18 @@ type flagSetFailure struct {
 
 func (self *flagSet) Parse() {
 	if err := self.FlagSet.Parse(os.Args); err != nil {
-		panic(flagSetFailure{err})
+		switch err {
+		case goflag.ErrHelp:
+			self.app.Usage()
+		default:
+			fmt.Println("run with command 'help' for usage information")
+			os.Exit(2)
+		}
+	}
+	if len(self.FlagSet.Args()) > 0 {
+		fmt.Println("arguments provided but not defined:", strings.Join(self.FlagSet.Args(), " "))
+		fmt.Println("run with command 'help' for usage information")
+		os.Exit(2)
 	}
 }
 
@@ -135,29 +152,19 @@ func (self *AppConfig) Run() {
 	}
 	commandArgs := os.Args[endOfGlobalFlags+1:]
 	os.Args = os.Args[1:endOfGlobalFlags+1]
-	set := newFlagSet()
-	defer func(){
-		if r := recover(); r != nil {
-			switch r.(type) {
-			case flagSetFailure:
-				self.Usage()
-			default:
-				panic(r)
-			}
-		}
-	}()
+	set := newFlagSet(self)
+	set.FlagSet.Usage = func() {}
 	self.global(set)
-	var help bool
-	set.BoolVar(&help, "help", false, "")
 	set.Parse()
-	if len(commandArgs) == 0 || help {
+	if len(commandArgs) == 0 {
 		self.Usage()
 	}
 	command := commandArgs[0]
 	os.Args = commandArgs[1:]
 	for _, c := range self.commands {
 		if c.name == command {
-			set := newFlagSet()
+			set := newFlagSet(self)
+			set.FlagSet.Usage = func() {}
 			c.function(set)
 			os.Exit(0)
 		}
@@ -181,35 +188,3 @@ func (self *AppConfig) Usage() {
 
 	os.Exit(2)
 }
-
-/*
-type Command struct {
-	Name        string
-	Description string
-	Function    func()
-}
-
-func usage(whoami string, commands []Command) {
-	fmt.Println("Usage:", whoami, "CMD", "[OPTS...]", "[ARGS...]")
-	fmt.Println("Commands:")
-	for _, c := range commands {
-		fmt.Println("\t", c.Description)
-	}
-	os.Exit(2)
-}
-
-func CommandRun(commands []Command) {
-	whoami := path.Base(os.Args[0])
-	if len(os.Args) > 1 {
-		for _, c := range commands {
-			if c.Name == os.Args[1] {
-				os.Args = os.Args[1:]
-				c.Function()
-				return
-			}
-		}
-	}
-
-	usage(whoami, commands)
-}
-*/

@@ -30,11 +30,11 @@ Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the n
 - [x] Run a cluster in a single process for testing
 - [x] Structure things better
 - [x] Resiliency to weird protocol stuff (run the RPC loop manually?)
-- [ ] Better configuration handling (defaults)
+- [x] Command line parser doesn't work that well (try "main datanode -help")
 - [ ] Events from servers for testing
+- [ ] Better configuration handling (defaults)
 - [ ] Allow decommissioning nodes
-- [ ] Better logging, so warnings normally can be fatal for tests
-- [ ] Command line parser doesn't work that well (try "main datanode -help")
+- [ ] Better logging, so warnings normally can be fatal for tests (two levels: warn that this process broke, and warn that somebody we're communicating with broke)
 - [ ] Don't need to wait around to delete blocks, just prevent any new reads and we'll come back to them
 - [ ] DataNode should do stuff on startup, and then spawn workers, not just spawn everybody (race conditions with address and data directories)
 - [ ] Support multiple MetaDataNodes somehow (DHT? Raft? Get rid of MetaDataNodes and use Gossip?)
