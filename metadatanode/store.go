@@ -16,9 +16,20 @@ func OpenDB(filename string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _ , err := conn.Exec("CREATE TABLE file_blocks(blob, block)"); err != nil {
+	var name string
+	// No errors until Scan, scan requires a location to store the value..
+	err = conn.QueryRow(
+		"select name from sqlite_master where type='table' and name='file_blocks'").Scan(&name)
+	switch {
+	case err == sql.ErrNoRows:
+		if _ , err = conn.Exec("CREATE TABLE file_blocks(blob, block)"); err != nil {
+			log.Fatalln(err)
+		}
+	case err != nil:
 		log.Fatalln(err)
+	default:
 	}
+
 	return &DB{conn}, err
 }
 
