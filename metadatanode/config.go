@@ -5,8 +5,8 @@ import (
 )
 
 type Config struct {
-	ClientListener net.Listener
-	ClusterListener net.Listener
+	ClientListener    net.Listener
+	ClusterListener   net.Listener
 	ReplicationFactor int
-	DatabaseFile string
+	DatabaseFile      string
 }

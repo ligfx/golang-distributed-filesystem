@@ -30,14 +30,14 @@ func main() {
 		flag.Parse()
 
 		conf := datanode.Config{
-			DataDir: *dataDir,
-			Debug: debug,
-			Listener: listener.Get(),
+			DataDir:           *dataDir,
+			Debug:             debug,
+			Listener:          listener.Get(),
 			HeartbeatInterval: *heartbeatInterval,
-			LeaderAddress: *leaderAddress}
+			LeaderAddress:     *leaderAddress}
 		datanode.Create(conf)
 		// Wait on goroutines
-		<- make(chan bool)
+		<-make(chan bool)
 	})
 
 	cli.Command("metadatanode", "Run leader", func(flag command.Flags) {
@@ -54,7 +54,7 @@ func main() {
 			"metadata.db"}
 		metadatanode.Create(conf)
 		// Wait on goroutines
-		<- make(chan bool)
+		<-make(chan bool)
 	})
 
 	cli.Command("upload", "Upload a file", func(flag command.Flags) {

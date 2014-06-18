@@ -20,7 +20,7 @@ func (s ByRandom) Less(i, j int) bool {
 }
 
 type byFunc struct {
-	f func(NodeID) int
+	f    func(NodeID) int
 	list []NodeID
 }
 

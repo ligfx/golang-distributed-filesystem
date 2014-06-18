@@ -20,7 +20,6 @@ func runClientRPC(c net.Conn, mdn *MetaDataNodeState) {
 	switch method {
 	case "CreateBlob":
 		if err := server.ReadBody(nil); err != nil {
-			// TODO: Fatal bc I want to see if passing nil fails
 			log.Fatalln(err)
 			return
 		}
@@ -43,7 +42,7 @@ func runClientRPC(c net.Conn, mdn *MetaDataNodeState) {
 
 			case "Commit":
 				mdn.CommitBlob(blobID, blocks)
-				log.Println("Committed blob '" + blobID + "' for", c.RemoteAddr())
+				log.Println("Committed blob '"+blobID+"' for", c.RemoteAddr())
 				server.SendOkay()
 				return
 
@@ -75,7 +74,6 @@ func runClientRPC(c net.Conn, mdn *MetaDataNodeState) {
 		server.Unacceptable()
 	}
 }
-
 
 func (self *MetaDataNodeState) ClientRPCServer(sock net.Listener) {
 	log.Println("Accepting client connections on", sock.Addr())

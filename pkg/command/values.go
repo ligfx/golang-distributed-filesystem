@@ -11,6 +11,7 @@ import (
 type listenerFlag struct {
 	port int
 }
+
 func ListenerFlag(flags Flags, name string, value int, usage string) *listenerFlag {
 	self := &listenerFlag{port: value}
 	flags.Var(self, name, usage)
@@ -36,10 +37,11 @@ func (self *listenerFlag) Get() net.Listener {
 }
 
 type fileFlag struct {
-	name string
+	name     string
 	filename string
-	set bool
+	set      bool
 }
+
 func FileFlag(flags Flags, name string, usage string) *fileFlag {
 	self := &fileFlag{name, "", false}
 	flags.Var(self, name, usage)
@@ -54,12 +56,13 @@ func (self *fileFlag) Set(s string) error {
 	return nil
 }
 func (self *fileFlag) Get() *os.File {
-	if ! self.set {
-		fmt.Println("flag must be provided:", "-" + self.name)
+	if !self.set {
+		fmt.Println("flag must be provided:", "-"+self.name)
 		fmt.Println("run with command 'help' for usage information")
 		os.Exit(2)
 	}
-	file, err := os.Open(self.filename); if err != nil {
+	file, err := os.Open(self.filename)
+	if err != nil {
 		log.Fatal(err)
 	}
 	return file

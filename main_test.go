@@ -16,8 +16,8 @@ import (
 	"time"
 
 	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
-	"github.com/michaelmaltese/golang-distributed-filesystem/metadatanode"
 	"github.com/michaelmaltese/golang-distributed-filesystem/datanode"
+	"github.com/michaelmaltese/golang-distributed-filesystem/metadatanode"
 	"github.com/michaelmaltese/golang-distributed-filesystem/upload"
 )
 
@@ -42,37 +42,45 @@ func (s ByRandom) Less(i, j int) bool {
 //   - Bigger blobs / more blocks
 func TestIntegration(*testing.T) {
 
-	mdnClientListener, err := net.Listen("tcp", "[::1]:0"); if err != nil {
-		log.Fatal(err) }
-	mdnClusterListener, err := net.Listen("tcp", "[::1]:0"); if err != nil {
-		log.Fatal(err) }
+	mdnClientListener, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		log.Fatal(err)
+	}
+	mdnClusterListener, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	_, _ = metadatanode.Create(metadatanode.Config{
-		ClientListener: mdnClientListener,
-		ClusterListener: mdnClusterListener,
+		ClientListener:    mdnClientListener,
+		ClusterListener:   mdnClusterListener,
 		ReplicationFactor: 2,
-		DatabaseFile: "metadata.test.db",
-		})
+		DatabaseFile:      "metadata.test.db",
+	})
 
 	log.Println(mdnClusterListener.Addr().String())
 
-	dnListener1, err := net.Listen("tcp", ":0"); if err != nil {
-		log.Fatal(err) }
+	dnListener1, err := net.Listen("tcp", ":0")
+	if err != nil {
+		log.Fatal(err)
+	}
 	_, _ = datanode.Create(datanode.Config{
-		Listener: dnListener1,
-		LeaderAddress: mdnClusterListener.Addr().String(),
-		DataDir: "_data",
+		Listener:          dnListener1,
+		LeaderAddress:     mdnClusterListener.Addr().String(),
+		DataDir:           "_data",
 		HeartbeatInterval: 1 * time.Second,
-		})
+	})
 
-	dnListener2, err := net.Listen("tcp", ":0"); if err != nil {
-		log.Fatal(err) }
+	dnListener2, err := net.Listen("tcp", ":0")
+	if err != nil {
+		log.Fatal(err)
+	}
 	_, _ = datanode.Create(datanode.Config{
-		Listener: dnListener2,
-		LeaderAddress: mdnClusterListener.Addr().String(),
-		DataDir: "_data2",
+		Listener:          dnListener2,
+		LeaderAddress:     mdnClusterListener.Addr().String(),
+		DataDir:           "_data2",
 		HeartbeatInterval: 1 * time.Second,
-		})
+	})
 
 	wg := new(sync.WaitGroup)
 	wg2 := new(sync.WaitGroup)
@@ -82,11 +90,12 @@ func TestIntegration(*testing.T) {
 		wg2.Add(1)
 		doneBalancing.Add(1)
 		go func() {
-			file, err := os.Open("Godeps"); if err != nil {
+			file, err := os.Open("Godeps")
+			if err != nil {
 				panic(err)
 			}
 			blobID := upload.Upload(file, false, mdnClientListener.Addr().String())
-			
+
 			wg.Done()
 			doneBalancing.Wait()
 
@@ -147,24 +156,28 @@ func TestIntegration(*testing.T) {
 			wg2.Done()
 		}()
 	}
-	
+
 	wg.Wait()
-	dnListener3, err := net.Listen("tcp", ":0"); if err != nil {
-		log.Fatal(err) }
+	dnListener3, err := net.Listen("tcp", ":0")
+	if err != nil {
+		log.Fatal(err)
+	}
 	_, _ = datanode.Create(datanode.Config{
-		Listener: dnListener3,
-		LeaderAddress: mdnClusterListener.Addr().String(),
-		DataDir: "_data3",
+		Listener:          dnListener3,
+		LeaderAddress:     mdnClusterListener.Addr().String(),
+		DataDir:           "_data3",
 		HeartbeatInterval: 1 * time.Second,
-		})
-	dnListener4, err := net.Listen("tcp", ":0"); if err != nil {
-		log.Fatal(err) }
+	})
+	dnListener4, err := net.Listen("tcp", ":0")
+	if err != nil {
+		log.Fatal(err)
+	}
 	_, _ = datanode.Create(datanode.Config{
-		Listener: dnListener4,
-		LeaderAddress: mdnClusterListener.Addr().String(),
-		DataDir: "_data4",
+		Listener:          dnListener4,
+		LeaderAddress:     mdnClusterListener.Addr().String(),
+		DataDir:           "_data4",
 		HeartbeatInterval: 1 * time.Second,
-		})
+	})
 	time.Sleep(5 * time.Second)
 	for _, _ = range make([]bool, 18) {
 		doneBalancing.Done()

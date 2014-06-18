@@ -1,75 +1,12 @@
 package datanode
 
 import (
+	"io"
 	"log"
 	"net"
-	"net/rpc"
-	"net/rpc/jsonrpc"
-	"strings"
 
 	. "github.com/michaelmaltese/golang-distributed-filesystem/common"
 )
-
-func sendBlock(dn *DataNodeState, blockID BlockID, peers []string) {
-	if err := dn.Manager.LockRead(blockID); err != nil {
-		log.Println("Couldn't lock", blockID)
-		return
-	}
-	defer dn.Manager.UnlockRead(blockID)
-
-	var peerConn net.Conn
-	var forwardTo []string
-	var err error
-	// Find an online peer
-	for i, addr := range peers {
-		peerConn, err = net.Dial("tcp", addr)
-		if err == nil {
-			forwardTo = append(peers[:i], peers[i+1:]...)
-			break
-		}
-	}
-	if peerConn == nil {
-		log.Println("Couldn't forward block",
-			blockID,
-			"to any DataNodes in:",
-			strings.Join(peers, " "))
-		return
-	}
-	peerCodec := jsonrpc.NewClientCodec(peerConn)
-	if Debug {
-		peerCodec = LoggingClientCodec(
-			peerConn.RemoteAddr().String(),
-			peerCodec)
-	}
-	peer := rpc.NewClientWithCodec(peerCodec)
-	defer peer.Close()
-
-	size, err := dn.Store.BlockSize(blockID)
-	if err != nil {
-		log.Fatal("Stat error: ", err)
-	}
-
-	err = peer.Call("Forward",
-		&ForwardBlock{blockID, forwardTo, size},
-		nil)
-	if err != nil {
-		log.Fatal("Forward error: ", err)
-	}
-
-	err = dn.Store.ReadBlock(blockID, peerConn)
-	if err != nil {
-		log.Fatal("Copying error: ", err)
-	}
-
-	hash, err := dn.Store.ReadChecksum(blockID)
-	if err != nil {
-		log.Fatalln("Reading checksum:", err)
-	}
-	err = peer.Call("Confirm", hash, nil)
-	if err != nil {
-		log.Fatal("Confirm error: ", err)
-	}
-}
 
 func RunRPC(c net.Conn, dn *DataNodeState) {
 	server := NewRPCServer(c)
@@ -96,60 +33,58 @@ func RunRPC(c net.Conn, dn *DataNodeState) {
 			return
 		}
 		dn.Manager.LockReceive(blockID)
+		defer dn.Manager.AbortAndDeleteIfNotCommitted(blockID)
 		server.SendOkay()
 
-		localChecksum, err := dn.Store.WriteBlock(
-			blockID,
-			size,
-			c)
+		writer, err := dn.Store.CreateBlock(blockID)
+		if err != nil {
+			log.Println("Opening block:", err)
+			server.Error("Opening block")
+			return
+		}
+		_, err = io.CopyN(writer, c, size)
 		if err != nil {
 			log.Println("Writing block:", err)
 			server.Error("Writing block")
 			return
 		}
+		localChecksum := writer.Checksum()
 		log.Println("Received block '"+string(blockID)+"' from", c.RemoteAddr())
 
-		method, err = server.ReadHeader(); if err != nil {
+		method, err = server.ReadHeader()
+		if err != nil {
 			log.Println(err)
-			dn.Manager.AbortReceive(blockID)
-			dn.Store.DeleteBlock(blockID)
 			return
 		}
 		if method != "Confirm" {
 			server.Unacceptable()
-			dn.Manager.AbortReceive(blockID)
-			dn.Store.DeleteBlock(blockID)
 			return
 		}
 		var remoteChecksum string
 		if err := server.ReadBody(&remoteChecksum); err != nil {
-			dn.Manager.AbortReceive(blockID)
-			dn.Store.DeleteBlock(blockID)
 			return
 		}
 		if remoteChecksum != localChecksum {
-			dn.Manager.AbortReceive(blockID)
-			dn.Store.DeleteBlock(blockID)
 			log.Println("Checksum doesn't match for", blockID)
 			server.Error("Checksum doesn't match")
 			return
 		}
 		if err := dn.Store.WriteChecksum(blockID, remoteChecksum); err != nil {
-			dn.Manager.AbortReceive(blockID)
-			dn.Store.DeleteBlock(blockID)
 			log.Fatalln("Couldn't write checksum:", err)
 			server.Error("Couldn't write checksum")
 			return
 		}
 		server.SendOkay()
-		dn.Manager.CommitReceive(blockID)
-		// Combine into Block Manager?
-		dn.HaveBlocks([]BlockID{blockID})
-		// Pipeline!
-		if len(forwardTo) > 0 {
-			dn.forwardingBlocks <- ForwardBlock{blockID, forwardTo, -1}
-		}
 
+		// Combine into Block Manager?
+		dn.Manager.CommitReceive(blockID)
+		dn.newBlocks.Push([]BlockID{blockID})
+		// Pipeline!
+		go func() {
+			if len(forwardTo) > 0 {
+				dn.forwardingBlocks <- ForwardBlock{blockID, forwardTo, -1}
+			}
+		}()
 
 	case "Get":
 		var blockID BlockID
@@ -163,8 +98,13 @@ func RunRPC(c net.Conn, dn *DataNodeState) {
 		}
 		defer dn.Manager.UnlockRead(blockID)
 		server.SendOkay()
-		if err := dn.Store.ReadBlock(blockID, c); err != nil {
-			log.Fatalln("Copying error: ", err)
+		reader, err := dn.Store.OpenBlock(blockID)
+		if err != nil {
+			log.Fatalln("Open error:", err)
+		}
+		_, err = io.Copy(c, reader)
+		if err != nil {
+			log.Fatalln("Copy error:", err)
 		}
 
 	default:

@@ -7,9 +7,9 @@ import (
 )
 
 type Config struct {
-	DataDir string
-	Debug bool
-	Listener net.Listener
+	DataDir           string
+	Debug             bool
+	Listener          net.Listener
 	HeartbeatInterval time.Duration
-	LeaderAddress string
+	LeaderAddress     string
 }

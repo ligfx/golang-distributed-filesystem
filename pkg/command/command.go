@@ -11,16 +11,16 @@ import (
 )
 
 type flag struct {
-	name string
+	name  string
 	value string
 	usage string
 }
 
 type command struct {
-	name string
+	name        string
 	description string
-	flags []flag
-	function func(Flags)
+	flags       []flag
+	function    func(Flags)
 }
 
 type Flags interface {
@@ -33,11 +33,11 @@ type Flags interface {
 }
 
 type AppConfig struct {
-	whoami string
-	help bool
+	whoami      string
+	help        bool
 	globalFlags []flag
-	global func(Flags)
-	commands []command
+	global      func(Flags)
+	commands    []command
 }
 
 func App() *AppConfig {
@@ -76,7 +76,8 @@ func (self *flagDummy) Var(value goflag.Value, name string, usage string) {
 	*self.list = append(*self.list, flag)
 }
 
-type doneTracing struct {}
+type doneTracing struct{}
+
 func (self *doneTracing) Error() string {
 	return "Tracing flags"
 }
@@ -107,7 +108,7 @@ func (self *AppConfig) Command(name string, description string, f func(Flags)) {
 		self.commands = append(self.commands, c)
 	}()
 
-	f(&flagDummy{&flags})	
+	f(&flagDummy{&flags})
 }
 
 type flagSet struct {
@@ -151,7 +152,7 @@ func (self *AppConfig) Run() {
 		}
 	}
 	commandArgs := os.Args[endOfGlobalFlags+1:]
-	os.Args = os.Args[1:endOfGlobalFlags+1]
+	os.Args = os.Args[1 : endOfGlobalFlags+1]
 	set := newFlagSet(self)
 	set.FlagSet.Usage = func() {}
 	self.global(set)

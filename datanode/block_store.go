@@ -2,6 +2,7 @@ package datanode
 
 import (
 	"fmt"
+	"hash"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -12,7 +13,7 @@ import (
 )
 
 // Deals with filesystem
-type BlockStore struct{
+type BlockStore struct {
 	DataDir string
 }
 
@@ -25,7 +26,7 @@ func (self *BlockStore) BlockSize(block BlockID) (int64, error) {
 }
 
 func (self *BlockStore) LocalChecksum(block BlockID) (string, error) {
-	file, err := os.Open(self.BlockFilename(block))
+	file, err := self.OpenBlock(block)
 	if err != nil {
 		return "", err
 	}
@@ -38,32 +39,41 @@ func (self *BlockStore) LocalChecksum(block BlockID) (string, error) {
 	return fmt.Sprint(hash.Sum32()), nil
 }
 
-func (self *BlockStore) ReadBlock(block BlockID, w io.Writer) error {
-	file, err := os.Open(self.BlockFilename(block))
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	_, err = io.Copy(w, file)
-	if err != nil {
-		return err
-	}
-	return nil
+func (self *BlockStore) OpenBlock(block BlockID) (io.ReadCloser, error) {
+	return os.Open(self.BlockFilename(block))
 }
 
-func (self *BlockStore) WriteBlock(block BlockID, size int64, r io.Reader) (string, error) {
+type HashingWriter struct {
+	main io.WriteCloser
+	hash hash.Hash32
+}
+
+func NewHashingWriter(main io.WriteCloser, hash hash.Hash32) *HashingWriter {
+	return &HashingWriter{main, hash}
+}
+
+func (self *HashingWriter) Write(p []byte) (int, error) {
+	return io.MultiWriter(self.main, self.hash).Write(p)
+}
+
+func (self *HashingWriter) Close() error {
+	return self.main.Close()
+}
+
+func (self *HashingWriter) Checksum() string {
+	return fmt.Sprint(self.hash.Sum32())
+}
+
+// Something that you can get the hash from afterwards?
+// A HashingWriterCloser ?
+func (self *BlockStore) CreateBlock(block BlockID) (*HashingWriter, error) {
 	file, err := os.Create(self.BlockFilename(block))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	defer file.Close()
 
 	hash := crc32.NewIEEE()
-	_, err = io.CopyN(file, io.TeeReader(r, hash), size)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprint(hash.Sum32()), nil
+	return NewHashingWriter(file, hash), nil
 }
 
 func (self *BlockStore) ReadBlockList() ([]BlockID, error) {

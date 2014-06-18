@@ -30,6 +30,18 @@ type BlockIntents struct {
 
 // TODO:
 
+func (self *BlockIntents) GetExisting() []BlockID {
+	panic("Not implemented")
+}
+
+func (self *BlockIntents) GetUtilization() int {
+	panic("Not implemented")
+}
+
+func (self *BlockIntents) AbortAndDeleteIfNotCommitted(block BlockID) {
+	panic("Not implemented")
+}
+
 func (self *BlockIntents) LockReceive(block BlockID) {
 	self.lock.Lock()
 	defer self.lock.Unlock()
