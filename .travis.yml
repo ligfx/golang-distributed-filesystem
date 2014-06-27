@@ -1,5 +1,5 @@
 language: go
-install: curl -s https://raw.githubusercontent.com/pote/gpm/v1.2.1/bin/gpm | bash
+install: curl -s https://raw.githubusercontent.com/michaelmaltese/gpm-ng/master/gpm-ng | bash
 go:
   - 1.2
   - 1.3
