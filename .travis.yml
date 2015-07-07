@@ -1,5 +1,4 @@
 language: go
-install: curl -s https://raw.githubusercontent.com/pote/gpm/v1.2.1/bin/gpm | bash
 script: make test
 go:
   - 1.4
