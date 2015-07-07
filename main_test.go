@@ -90,7 +90,7 @@ func TestIntegration(*testing.T) {
 		wg2.Add(1)
 		doneBalancing.Add(1)
 		go func() {
-			file, err := os.Open("../../Makefile")
+			file, err := os.Open("Makefile")
 			if err != nil {
 				panic(err)
 			}

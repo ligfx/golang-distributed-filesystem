@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"time"
 
-	"golang-distributed-filesystem/pkg/command"
+	"golang-distributed-filesystem/utils/command"
 
 	"golang-distributed-filesystem/datanode"
 	"golang-distributed-filesystem/metadatanode"
