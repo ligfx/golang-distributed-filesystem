@@ -22,7 +22,7 @@ func OpenDB(filename string) (*DB, error) {
 		"select name from sqlite_master where type='table' and name='file_blocks'").Scan(&name)
 	switch {
 	case err == sql.ErrNoRows:
-		if _, err = conn.Exec("CREATE TABLE file_blocks(blob, block)"); err != nil {
+		if _ , err = conn.Exec("CREATE TABLE file_blocks(blob, block)"); err != nil {
 			log.Fatalln(err)
 		}
 	case err != nil:

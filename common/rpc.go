@@ -8,29 +8,10 @@ import (
 	"net/rpc/jsonrpc"
 )
 
-type RPCClient struct {
-}
-
-func (self *RPCClient) Close() {
-	panic("Not implemented")
-}
-
-func (self *RPCClient) Call(method string, in interface{}, out interface{}) error {
-	panic("Not implemented")
-}
-
-func (self *RPCClient) Write(p []byte) (int, error) {
-	panic("Not implemented")
-}
-
-func NewRPCClient(addr string) (*RPCClient, error) {
-	panic("Not implemented")
-}
-
 type RPCServer struct {
-	codec             rpc.ServerCodec
+	codec rpc.ServerCodec
 	lastServiceMethod string
-	lastSeq           uint64
+	lastSeq uint64
 }
 
 // TODO: Needs to support Debug
@@ -64,7 +45,7 @@ func (self *RPCServer) Unacceptable() error {
 	log.Println("Unacceptable")
 	self.ReadBody(nil)
 	return self.Error("Method not accepted")
-}
+}	
 
 func (self *RPCServer) SendOkay() error {
 	var r rpc.Response

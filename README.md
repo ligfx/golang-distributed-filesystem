@@ -1,6 +1,6 @@
 [![GoDoc](https://godoc.org/github.com/michaelmaltese/golang-distributed-filesystem?status.png)](https://godoc.org/github.com/michaelmaltese/golang-distributed-filesystem) [![Build Status](https://travis-ci.org/michaelmaltese/golang-distributed-filesystem.svg?branch=master)](https://travis-ci.org/michaelmaltese/golang-distributed-filesystem)
 
-Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the nitty-gritty of distributed systems.  [@michaelmaltese](https://twitter.com/michaelmaltese)
+Writing a HDFS clone in [Go](http://golang.org) to learn more about Go and the nitty-gritty of distributed systems. If you're hiring for data science / pipeline-engineering jobs, or want to talk, I'd love if you got in touch with me [@michaelmaltese](https://twitter.com/michaelmaltese) or [mjm72010@mymail.pomona.edu](mailto:mjm72010@mymail.pomona.edu).
 
 ## Features/TODO
 
