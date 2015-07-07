@@ -1,4 +1,4 @@
 _data*
 metadata.db
-bin
-pkg
+/bin
+/pkg
