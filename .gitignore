@@ -1,4 +1,4 @@
-.godeps/
-golang-distributed-filesystem
 _data*
 metadata.db
+bin
+pkg
